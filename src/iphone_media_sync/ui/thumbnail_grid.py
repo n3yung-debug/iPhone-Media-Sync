@@ -8,6 +8,7 @@ from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QListWidget, QListWidgetItem
 
 from ..device.models import MediaItem, MediaKind
+from .theme import BG_RAISED, TEXT_MUTED
 
 _TILE = 200
 _ROLE_ITEM = Qt.ItemDataRole.UserRole
@@ -15,9 +16,9 @@ _ROLE_ITEM = Qt.ItemDataRole.UserRole
 
 def _placeholder(kind: MediaKind) -> QPixmap:
     pm = QPixmap(_TILE - 24, _TILE - 24)
-    pm.fill(QColor("#2b2f33"))
+    pm.fill(QColor(BG_RAISED))
     painter = QPainter(pm)
-    painter.setPen(QColor("#8a9199"))
+    painter.setPen(QColor(TEXT_MUTED))
     label = "▶ video" if kind == MediaKind.VIDEO else "photo"
     painter.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, label)
     painter.end()
