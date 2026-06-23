@@ -1,21 +1,33 @@
-# iPhone Media Sync v1.0.0
+# iPhone Media Sync v1.1.0
 
-First release.
+A big feature update on top of v1.0.0.
 
-## Features
-- **Auto-detect** iPhone plug-in / unplug (no Apple drivers required).
-- **Backup** the camera roll to one or more local/NAS folders, organized into
-  `YYYY/YYYY-MM-DD/`. Originals (HEIC / HEVC / MOV) are kept untouched.
-- **Verify-after-copy** — every file is hash-checked at the destination before
-  it counts as backed up.
-- **Incremental** — a local index remembers what's already backed up, so
-  re-plugging only copies new media.
-- **Duplicate review** — groups exact (SHA-256) and visually-similar
-  (perceptual hash) photos and suggests one to keep per group.
-- **Free up space** — review what's on the phone and mark items for deletion;
-  nothing is ever deleted automatically.
-- **Purple-themed** PySide6 UI with a scrollable thumbnail grid.
-- Version shown in the window title and toolbar; optional custom app icon.
+## New in 1.1.0
+- **Live Photos** are paired (still + `.MOV`) and backed up / deleted together;
+  the grid shows one tile per Live Photo with a ◉ badge.
+- **EXIF capture-date foldering** — backups file under the date a photo was
+  actually taken (falls back to the file's modified time).
+- **Filter & search bar** — filter by filename, type (photo / video /
+  screenshot), and minimum size, on the Backup and Free-up-space tabs.
+- **Best-of-burst** — duplicate groups suggest keeping the sharpest frame.
+- **Pre-backup dry-run** — see how much is new vs. already backed up, with a
+  destination free-space warning, before copying.
+- **Resume / retry** — failed items are tracked with a "Retry failed" button.
+- **Faster re-scans** — a disk cache of hashes + thumbnails means re-plugging
+  a phone skips re-reading unchanged files.
+- **Cleanup candidates** — one-click select Screenshots, Blurry photos, or
+  Large videos to review for deletion.
+- **Backup manifest** — a CSV log of everything copied is written to each
+  destination.
+- **Storage readouts** for backup destinations.
+- **Folder-template control** in Settings.
+- **Update checker** — a toolbar link appears when a newer release exists.
+- **Light theme** toggle alongside the dark purple theme.
+
+## Core features (from 1.0.0)
+- Auto-detect iPhone, back up to local/NAS folders, verify-after-copy,
+  incremental backups, exact + perceptual duplicate review, and a
+  review-and-mark "free up space" flow. Originals (HEIC/HEVC/MOV) untouched.
 
 ## Download
 Grab `iPhoneMediaSync-windows.zip` below, unzip it anywhere, and run

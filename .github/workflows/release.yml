@@ -10,7 +10,7 @@ on:
       version:
         description: "Version to release (without the leading v)"
         required: true
-        default: "1.0.0"
+        default: "1.1.0"
 
 permissions:
   contents: write
@@ -47,7 +47,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.event.inputs.version }}
-          target_commitish: main
+          target_commitish: ${{ github.sha }}
           name: iPhone Media Sync v${{ github.event.inputs.version }}
           body_path: RELEASE_NOTES.md
           files: iPhoneMediaSync-windows.zip
