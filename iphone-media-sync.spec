@@ -7,11 +7,18 @@ Build with:  pyinstaller iphone-media-sync.spec
 Output:      dist/iPhoneMediaSync/iPhoneMediaSync.exe   (run this)
 """
 
+import os
+
 from PyInstaller.utils.hooks import collect_all
 
 datas = []
 binaries = []
 hiddenimports = []
+
+# Bundle the app icon (if present) so it can also be shown at runtime as the
+# window / taskbar icon, not just baked into the .exe.
+if os.path.exists("assets/app.ico"):
+    datas.append(("assets/app.ico", "assets"))
 
 # These packages load submodules / data files dynamically, so collect them
 # fully rather than relying on static import analysis. (PySide6 is handled by

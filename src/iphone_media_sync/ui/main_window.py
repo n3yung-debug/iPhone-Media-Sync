@@ -6,7 +6,7 @@ import logging
 from typing import Optional
 
 from PySide6.QtCore import QThread
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QIcon, QImage
 from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .. import __version__
 from ..core.backup import BackupResult
 from ..core.config import Config
 from ..core.dedupe import find_exact_duplicates, find_similar_images
@@ -27,6 +28,7 @@ from ..device.models import DeviceInfo, MediaItem
 from .backup_tab import BackupTab
 from .cleanup_tab import CleanupTab
 from .duplicates_tab import DuplicatesTab
+from .resources import APP_ICON
 from .settings_dialog import SettingsDialog
 from .workers import AnalyzeWorker, BackupWorker, DeleteWorker, ScanWorker
 
@@ -38,7 +40,9 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("iPhone Media Sync")
+        self.setWindowTitle(f"iPhone Media Sync v{__version__}")
+        if APP_ICON.exists():
+            self.setWindowIcon(QIcon(str(APP_ICON)))
         self.resize(1100, 760)
 
         self.config = Config.load()
@@ -84,6 +88,9 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy().Expanding,  # type: ignore[attr-defined]
                              spacer.sizePolicy().verticalPolicy())
         bar.addWidget(spacer)
+        version_label = QLabel(f"v{__version__}  ")
+        version_label.setStyleSheet("color: #b3a9cc;")
+        bar.addWidget(version_label)
         settings_btn = QPushButton("Settings…")
         settings_btn.clicked.connect(self._open_settings)
         bar.addWidget(settings_btn)
