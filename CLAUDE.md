@@ -32,6 +32,10 @@ runs with the repo token and can create tags/releases:
    if packaging has trouble.
 4. Dispatch the workflow with the version input, poll until it completes, then
    confirm with the release URL.
+5. Merge the working branch into `main` so `main` and the Releases page always
+   reflect the latest version. The sandbox can't push to `main` directly, so do
+   it via the GitHub API (`create_pull_request` base `main` + head working
+   branch, then `merge_pull_request`). This is part of "push a release".
 
 ## Build / packaging
 - `build.bat` builds a folder app locally: `dist/iPhoneMediaSync/iPhoneMediaSync.exe`.
