@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QPushButton,
     QSpinBox,
@@ -65,6 +66,20 @@ class SettingsDialog(QDialog):
         )
         self._require_backup.setChecked(config.require_backup_before_delete)
 
+        self._quarantine = QCheckBox(
+            "Quarantine deleted items to a local folder first (reversible)"
+        )
+        self._quarantine.setChecked(config.quarantine_before_delete)
+        self._quarantine_dir = QLineEdit(config.quarantine_dir)
+        self._quarantine_dir.setPlaceholderText(
+            "(default: ~/.iphone-media-sync/quarantine)"
+        )
+        quarantine_browse = QPushButton("Browse…")
+        quarantine_browse.clicked.connect(self._pick_quarantine)
+        quarantine_row = QHBoxLayout()
+        quarantine_row.addWidget(self._quarantine_dir, 1)
+        quarantine_row.addWidget(quarantine_browse)
+
         self._blurry = QDoubleSpinBox()
         self._blurry.setRange(0, 100000)
         self._blurry.setDecimals(0)
@@ -105,6 +120,8 @@ class SettingsDialog(QDialog):
         layout.addWidget(self._threshold)
         layout.addSpacing(8)
         layout.addWidget(self._require_backup)
+        layout.addWidget(self._quarantine)
+        layout.addLayout(quarantine_row)
         layout.addSpacing(8)
         layout.addLayout(form)
         layout.addWidget(self._check_updates)
@@ -119,6 +136,11 @@ class SettingsDialog(QDialog):
         for item in self._targets.selectedItems():
             self._targets.takeItem(self._targets.row(item))
 
+    def _pick_quarantine(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Choose quarantine folder")
+        if folder:
+            self._quarantine_dir.setText(folder)
+
     def result_config(self) -> Config:
         self._config.backup_targets = [
             self._targets.item(i).text() for i in range(self._targets.count())
@@ -128,6 +150,8 @@ class SettingsDialog(QDialog):
         self._config.detect_perceptual = self._perceptual.isChecked()
         self._config.perceptual_threshold = self._threshold.value()
         self._config.require_backup_before_delete = self._require_backup.isChecked()
+        self._config.quarantine_before_delete = self._quarantine.isChecked()
+        self._config.quarantine_dir = self._quarantine_dir.text().strip()
         self._config.blurry_threshold = self._blurry.value()
         self._config.large_video_mb = self._large_video.value()
         self._config.theme = self._theme.currentText()

@@ -43,6 +43,14 @@ jobs:
         run: Compress-Archive -Path dist/iPhoneMediaSync/* -DestinationPath iPhoneMediaSync-windows.zip
         shell: pwsh
 
+      - name: Build installer (Inno Setup)
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=${{ github.event.inputs.version }} installer\iphone-media-sync.iss
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
@@ -50,5 +58,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: iPhone Media Sync v${{ github.event.inputs.version }}
           body_path: RELEASE_NOTES.md
-          files: iPhoneMediaSync-windows.zip
+          files: |
+            iPhoneMediaSync-windows.zip
+            installer/output/iPhoneMediaSync-Setup-*.exe
           fail_on_unmatched_files: false

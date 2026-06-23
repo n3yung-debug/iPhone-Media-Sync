@@ -186,13 +186,39 @@ def test_scan_cache_round_trip(tmp_path):
         cache.close()
 
 
+def test_quarantine_paths(tmp_path):
+    from datetime import datetime
+
+    from iphone_media_sync.core.quarantine import (
+        batch_dir,
+        resolve_dir,
+        unique_path,
+    )
+
+    assert resolve_dir(str(tmp_path)) == Path(tmp_path)
+    # default dir used when configured path is empty
+    assert resolve_dir("").name == "quarantine"
+
+    when = datetime(2026, 6, 23, 9, 30, 15)
+    bd = batch_dir(str(tmp_path), when)
+    assert bd == Path(tmp_path) / "20260623-093015"
+
+    f = tmp_path / "IMG.HEIC"
+    assert unique_path(f) == f  # doesn't exist yet
+    f.write_bytes(b"x")
+    assert unique_path(f) == tmp_path / "IMG_1.HEIC"  # avoids clobber
+
+
 def test_config_new_fields(tmp_path, monkeypatch):
     monkeypatch.setattr(cfgmod, "APP_DIR", tmp_path)
     monkeypatch.setattr(cfgmod, "CONFIG_PATH", tmp_path / "config.json")
     Config(theme="light", check_updates=False, blurry_threshold=33.0,
-           large_video_mb=500).save()
+           large_video_mb=500, quarantine_before_delete=False,
+           quarantine_dir="/q").save()
     loaded = Config.load()
     assert loaded.theme == "light"
     assert loaded.check_updates is False
     assert loaded.blurry_threshold == 33.0
     assert loaded.large_video_mb == 500
+    assert loaded.quarantine_before_delete is False
+    assert loaded.quarantine_dir == "/q"
