@@ -18,15 +18,17 @@ python -m pip install pyinstaller
 echo === Building executable ===
 pyinstaller --noconfirm --clean iphone-media-sync.spec
 
-if exist "dist\iPhoneMediaSync.exe" (
+if exist "dist\iPhoneMediaSync\iPhoneMediaSync.exe" (
     echo.
     echo ============================================================
-    echo  Build complete:  dist\iPhoneMediaSync.exe
-    echo  Double-click it to launch the app.
+    echo  Build complete:  dist\iPhoneMediaSync\iPhoneMediaSync.exe
+    echo  Open the dist\iPhoneMediaSync folder and double-click
+    echo  iPhoneMediaSync.exe to launch the app. Keep the .exe with
+    echo  the other files in that folder.
     echo ============================================================
 ) else (
     echo.
-    echo Build did not produce dist\iPhoneMediaSync.exe -- see errors above.
+    echo Build did not produce the executable -- see errors above.
     exit /b 1
 )
 

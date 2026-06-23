@@ -1,12 +1,19 @@
 name: Build Windows EXE
 
-# Builds dist/iPhoneMediaSync.exe on a Windows runner and uploads it as a
-# downloadable artifact, so no local Python toolchain is needed.
+# Builds the folder app (dist/iPhoneMediaSync/) on a Windows runner, zips it,
+# and:
+#   * on any push / manual run -> uploads the zip as a downloadable artifact
+#   * on a version tag (e.g. v1.0.0) -> publishes the zip to a GitHub Release
+#     with a permanent download link.
 
 on:
   push:
     branches: ["**"]
+    tags: ["v*"]
   workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create Releases
 
 jobs:
   build:
@@ -26,12 +33,23 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install pyinstaller
 
-      - name: Build executable
+      - name: Build executable (folder build)
         run: pyinstaller --noconfirm --clean iphone-media-sync.spec
 
-      - name: Upload EXE artifact
+      - name: Zip the app folder
+        run: Compress-Archive -Path dist/iPhoneMediaSync/* -DestinationPath iPhoneMediaSync-windows.zip
+        shell: pwsh
+
+      - name: Upload zip artifact
         uses: actions/upload-artifact@v4
         with:
           name: iPhoneMediaSync-windows
-          path: dist/iPhoneMediaSync.exe
+          path: iPhoneMediaSync-windows.zip
           if-no-files-found: error
+
+      - name: Publish to Release (on version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: iPhoneMediaSync-windows.zip
+          generate_release_notes: true

@@ -49,27 +49,36 @@ python -m iphone_media_sync
 
 (Run from the `src/` directory, or install the package with `pip install -e .`)
 
-## Build a standalone .exe (no Python needed to run)
+## Build a standalone app (no Python needed to run)
 
-You have two options:
+The build produces a **folder** (`dist\iPhoneMediaSync\`) with
+`iPhoneMediaSync.exe` inside. A folder build launches fast because nothing has
+to unpack at startup. Keep the `.exe` together with the other files in that
+folder (you can make a desktop shortcut to it).
 
 ### Option A — build it yourself on Windows
 Double-click **`build.bat`** (or run it from a command prompt). It sets up a
 virtual environment, installs everything, and produces:
 
 ```
-dist\iPhoneMediaSync.exe
+dist\iPhoneMediaSync\iPhoneMediaSync.exe
 ```
 
-Double-click that `.exe` to launch the app — no Python required afterwards.
+### Option B — download a pre-built app from GitHub
+Every push builds the app on a Windows runner.
 
-### Option B — download a pre-built .exe from GitHub Actions
-Every push builds the executable on a Windows runner. Go to the repo's
-**Actions → "Build Windows EXE"** run, and download the
-**`iPhoneMediaSync-windows`** artifact. Unzip it and run the `.exe`.
+- **Latest build:** repo **Actions → "Build Windows EXE"** → download the
+  **`iPhoneMediaSync-windows`** artifact (a zip). Unzip it anywhere and run
+  `iPhoneMediaSync.exe`.
+- **Tagged releases:** pushing a version tag publishes the zip to the repo's
+  **Releases** page with a permanent download link:
 
-> The first launch may be a little slow (a single-file build unpacks itself to
-> a temp folder). Windows SmartScreen may warn about an unsigned app — choose
+  ```bat
+  git tag v1.0.0
+  git push origin v1.0.0
+  ```
+
+> Windows SmartScreen may warn about an unsigned app — choose
 > *More info → Run anyway*. To use a custom icon, drop an `assets\app.ico`
 > file before building.
 

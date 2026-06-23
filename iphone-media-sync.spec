@@ -1,8 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec: build a single-file Windows .exe.
+"""PyInstaller spec: build a folder (one-dir) Windows app.
+
+A folder build launches fast because nothing has to unpack at startup.
 
 Build with:  pyinstaller iphone-media-sync.spec
-Output:      dist/iPhoneMediaSync.exe
+Output:      dist/iPhoneMediaSync/iPhoneMediaSync.exe   (run this)
 """
 
 from PyInstaller.utils.hooks import collect_all
@@ -35,19 +37,29 @@ a = Analysis(
 
 pyz = PYZ(a.pure)
 
+# Folder build: EXE holds only the bootloader/scripts; binaries and data are
+# placed alongside it by COLLECT, so launching doesn't unpack anything.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="iPhoneMediaSync",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    runtime_tmpdir=None,
     console=False,            # windowed app, no console window
     disable_windowed_traceback=False,
     icon="assets/app.ico" if __import__("os").path.exists("assets/app.ico") else None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name="iPhoneMediaSync",
 )
