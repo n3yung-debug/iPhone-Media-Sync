@@ -12,6 +12,7 @@ def main() -> int:
     from PySide6.QtWidgets import QApplication
 
     from . import __version__
+    from .core.config import Config
     from .ui.main_window import MainWindow
     from .ui.resources import APP_ICON
     from .ui.theme import apply_theme
@@ -21,7 +22,7 @@ def main() -> int:
     app.setApplicationVersion(__version__)
     if APP_ICON.exists():
         app.setWindowIcon(QIcon(str(APP_ICON)))
-    apply_theme(app)
+    apply_theme(app, Config.load().theme)
     window = MainWindow()
     window.show()
     return app.exec()

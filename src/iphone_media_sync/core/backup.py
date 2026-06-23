@@ -18,6 +18,7 @@ from ..device.models import MediaItem
 from .config import Config
 from .dedupe import perceptual_hash
 from .index import BackupIndex
+from .manifest import ManifestRecord, write_manifest
 
 log = logging.getLogger(__name__)
 
@@ -32,11 +33,13 @@ class BackupResult:
     failed: int = 0
     bytes_copied: int = 0
     errors: list[str] = field(default_factory=list)
+    failed_items: list[MediaItem] = field(default_factory=list)
+    manifest_paths: list[str] = field(default_factory=list)
 
 
 def dest_path_for(item: MediaItem, target: str, template: str) -> Path:
     """Compute the on-disk destination for an item under a backup target."""
-    when = item.modified or datetime.now()
+    when = item.best_date or datetime.now()
     subdir = template.format(
         year=when.strftime("%Y"),
         month=when.strftime("%m"),
@@ -85,6 +88,7 @@ class BackupEngine:
             if log_cb:
                 log_cb(msg)
 
+        records: list[ManifestRecord] = []
         total = len(items)
         with AfcMedia(udid) as media:
             for i, item in enumerate(items, start=1):
@@ -94,12 +98,19 @@ class BackupEngine:
                 if progress_cb:
                     progress_cb(i, total, item)
                 try:
-                    self._backup_one(media, udid, item, targets, note, result)
+                    self._backup_one(media, udid, item, targets, note, result, records)
                 except (DeviceError, OSError) as exc:
                     result.failed += 1
+                    result.failed_items.append(item)
                     msg = f"FAILED {item.filename}: {exc}"
                     result.errors.append(msg)
                     note(msg)
+
+        # Write a manifest of what was copied to each destination.
+        for target in targets:
+            path = write_manifest(target, records)
+            if path is not None:
+                result.manifest_paths.append(str(path))
         return result
 
     def _backup_one(
@@ -110,6 +121,7 @@ class BackupEngine:
         targets: list[str],
         note: LogCb,
         result: BackupResult,
+        records: list[ManifestRecord],
     ) -> None:
         # Read once, hash, then write to every target. Camera-roll files fit in
         # memory comfortably; this keeps verification simple and exact.
@@ -144,6 +156,16 @@ class BackupEngine:
         result.bytes_copied += item.size
         self._index.record(
             item.sha256, item.filename, item.size, primary_dest or "", udid
+        )
+        records.append(
+            ManifestRecord(
+                filename=item.filename,
+                afc_path=item.afc_path,
+                sha256=item.sha256,
+                size=item.size,
+                capture_date=item.best_date,
+                dest_path=primary_dest or "",
+            )
         )
         note(f"Backed up {item.filename}")
 

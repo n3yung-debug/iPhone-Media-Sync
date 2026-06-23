@@ -77,3 +77,122 @@ def test_backup_index(tmp_path):
         assert idx.dest_for("h1") == "/d/x.HEIC"
     finally:
         idx.close()
+
+
+# -- new feature coverage ------------------------------------------------
+
+def test_screenshot_detection():
+    from iphone_media_sync.core.metadata import looks_like_screenshot
+
+    assert looks_like_screenshot("DCIM/IMG_1.PNG", has_camera_exif=False)
+    assert not looks_like_screenshot("DCIM/IMG_2.HEIC", has_camera_exif=True)
+    # camera photo with no EXIF is still not flagged a screenshot
+    assert not looks_like_screenshot("DCIM/IMG_3.JPG", has_camera_exif=False)
+
+
+def test_live_photo_pairing_and_expansion():
+    from iphone_media_sync.core.live_photos import (
+        expand_with_live_partners,
+        pair_live_photos,
+    )
+
+    still = MediaItem("DCIM/100A/IMG_1.HEIC", 100, kind=MediaKind.PHOTO)
+    motion = MediaItem("DCIM/100A/IMG_1.MOV", 50, kind=MediaKind.VIDEO)
+    lonely = MediaItem("DCIM/100A/IMG_2.HEIC", 80, kind=MediaKind.PHOTO)
+    items = [still, motion, lonely]
+    pair_live_photos(items)
+
+    assert still.has_live_motion and still.live_partner == motion.afc_path
+    assert motion.is_live_motion and motion.live_partner == still.afc_path
+    assert not lonely.has_live_motion
+
+    by_path = {it.afc_path: it for it in items}
+    expanded = expand_with_live_partners([still], by_path)
+    assert {it.afc_path for it in expanded} == {still.afc_path, motion.afc_path}
+
+
+def test_best_of_burst_prefers_sharpest():
+    from iphone_media_sync.core.dedupe import find_similar_images
+
+    a = _photo("a.HEIC", 999, sha="1", phash="ffffffffffffffff")
+    a.sharpness = 10.0
+    b = _photo("b.HEIC", 100, sha="2", phash="fffffffffffffffe")
+    b.sharpness = 99.0  # smaller file but much sharper -> should be kept
+    groups = find_similar_images([a, b], threshold=2)
+    assert len(groups) == 1
+    assert groups[0].items[groups[0].suggested_keep].filename == "b.HEIC"
+
+
+def test_backup_estimate():
+    from iphone_media_sync.core.estimate import estimate_backup
+
+    new1 = _photo("a.HEIC", 1_000_000)
+    new2 = _photo("b.HEIC", 2_000_000)
+    done = _photo("c.HEIC", 5_000_000)
+    done.backed_up = True
+    est = estimate_backup([new1, new2, done])
+    assert est.total == 3
+    assert est.new == 2
+    assert est.already == 1
+    assert est.bytes_new == 3_000_000
+
+
+def test_version_is_newer():
+    from iphone_media_sync.core.updates import is_newer
+
+    assert is_newer("v1.2.0", "1.1.9")
+    assert is_newer("2.0.0", "v1.9.9")
+    assert not is_newer("v1.0.0", "1.0.0")
+    assert not is_newer("v0.9.0", "1.0.0")
+
+
+def test_human_bytes():
+    from iphone_media_sync.core.storage import human_bytes
+
+    assert human_bytes(None) == "unknown"
+    assert human_bytes(512) == "512 B"
+    assert human_bytes(2 * 1024 * 1024).endswith("MB")
+
+
+def test_manifest_round_trip(tmp_path):
+    import csv
+
+    from iphone_media_sync.core.manifest import ManifestRecord, write_manifest
+
+    recs = [ManifestRecord("a.HEIC", "DCIM/a.HEIC", "deadbeef", 123, None, "/d/a.HEIC")]
+    path = write_manifest(str(tmp_path), recs)
+    assert path is not None and path.exists()
+    rows = list(csv.reader(open(path, encoding="utf-8")))
+    assert rows[0][0] == "filename"
+    assert rows[1][0] == "a.HEIC"
+    assert write_manifest(str(tmp_path), []) is None
+
+
+def test_scan_cache_round_trip(tmp_path):
+    from iphone_media_sync.core.scan_cache import CachedAnalysis, ScanCache, make_key
+
+    cache = ScanCache(Path(tmp_path) / "scan.db")
+    try:
+        key = make_key("DCIM/a.HEIC", 100, None)
+        assert cache.get(key) is None
+        cache.put(key, CachedAnalysis(sha256="abc", phash="f0", is_screenshot=True,
+                                      thumb_png=b"PNGDATA"))
+        got = cache.get(key)
+        assert got is not None
+        assert got.sha256 == "abc"
+        assert got.is_screenshot is True
+        assert got.thumb_png == b"PNGDATA"
+    finally:
+        cache.close()
+
+
+def test_config_new_fields(tmp_path, monkeypatch):
+    monkeypatch.setattr(cfgmod, "APP_DIR", tmp_path)
+    monkeypatch.setattr(cfgmod, "CONFIG_PATH", tmp_path / "config.json")
+    Config(theme="light", check_updates=False, blurry_threshold=33.0,
+           large_video_mb=500).save()
+    loaded = Config.load()
+    assert loaded.theme == "light"
+    assert loaded.check_updates is False
+    assert loaded.blurry_threshold == 33.0
+    assert loaded.large_video_mb == 500

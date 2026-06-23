@@ -17,6 +17,9 @@ from ..core.backup import BackupEngine, BackupResult
 from ..core.config import Config
 from ..core.dedupe import perceptual_hash, sha256_bytes
 from ..core.index import BackupIndex
+from ..core.metadata import extract_image_metadata, looks_like_screenshot
+from ..core.scan_cache import CachedAnalysis, ScanCache, make_key
+from ..core.updates import check_for_update
 from ..device.afc_client import AfcMedia, DeviceError
 from ..device.models import MediaItem, MediaKind
 
@@ -48,24 +51,25 @@ class ScanWorker(QObject):
 
 
 class AnalyzeWorker(QObject):
-    """Reads each item to compute hashes (and a thumbnail for photos).
+    """Reads each item to compute hashes, metadata, and a thumbnail.
 
-    One pass over the library gives us: byte-exact hashes (for dedupe and the
-    backed-up check), perceptual hashes (for near-dupes), and thumbnails.
+    Results are cached on disk keyed by stable file identity, so a re-scan of
+    an unchanged library skips the (slow) device reads entirely.
     """
 
-    item_analyzed = Signal(object)  # MediaItem (sha256/phash filled in)
+    item_analyzed = Signal(object)  # MediaItem (filled in)
     thumb_ready = Signal(str, QImage)  # afc_path, image
     progress = Signal(int, int)  # done, total
     finished = Signal()
     error = Signal(str)
 
     def __init__(self, udid: str, items: list[MediaItem], index: BackupIndex,
-                 want_perceptual: bool = True):
+                 cache: ScanCache, want_perceptual: bool = True):
         super().__init__()
         self._udid = udid
         self._items = items
         self._index = index
+        self._cache = cache
         self._want_perceptual = want_perceptual
         self._cancelled = False
 
@@ -93,17 +97,47 @@ class AnalyzeWorker(QObject):
             self.error.emit(f"Unexpected error while analyzing: {exc}")
 
     def _analyze_one(self, media: AfcMedia, item: MediaItem) -> None:
+        key = make_key(item.afc_path, item.size, item.modified)
+        cached = self._cache.get(key)
+        if cached is not None and cached.sha256:
+            self._apply(item, cached)
+            if cached.thumb_png:
+                qimg = _qimage_from_png(cached.thumb_png)
+                if qimg is not None:
+                    self.thumb_ready.emit(item.afc_path, qimg)
+            return
+
         data = media.read_bytes(item.afc_path)
-        item.sha256 = sha256_bytes(data)
+        rec = CachedAnalysis(sha256=sha256_bytes(data))
         item.size = len(data)
-        item.backed_up = self._index.is_backed_up(item.sha256)
 
         if item.kind == MediaKind.PHOTO:
             if self._want_perceptual:
-                item.phash = perceptual_hash(data)
-            qimg = _decode_thumbnail(data)
+                rec.phash = perceptual_hash(data)
+            meta = extract_image_metadata(data)
+            rec.capture_date = meta.capture_date
+            rec.width = meta.width
+            rec.height = meta.height
+            rec.sharpness = meta.sharpness
+            rec.is_screenshot = looks_like_screenshot(item.afc_path, meta.has_camera_exif)
+            qimg, png = _decode_thumbnail(data)
+            rec.thumb_png = png
             if qimg is not None:
                 self.thumb_ready.emit(item.afc_path, qimg)
+
+        self._cache.put(key, rec)
+        self._apply(item, rec)
+
+    def _apply(self, item: MediaItem, rec: CachedAnalysis) -> None:
+        item.sha256 = rec.sha256
+        item.phash = rec.phash
+        item.capture_date = rec.capture_date
+        item.width = rec.width
+        item.height = rec.height
+        item.sharpness = rec.sharpness
+        item.is_screenshot = rec.is_screenshot
+        if rec.sha256:
+            item.backed_up = self._index.is_backed_up(rec.sha256)
 
 
 class BackupWorker(QObject):
@@ -173,23 +207,53 @@ class DeleteWorker(QObject):
             self.error.emit(f"Unexpected error during delete: {exc}")
 
 
-def _decode_thumbnail(data: bytes) -> Optional[QImage]:
+class UpdateCheckWorker(QObject):
+    """Checks GitHub for a newer release (silent on failure / offline)."""
+
+    update_available = Signal(str, str)  # latest_tag, url
+    finished = Signal()
+
+    def __init__(self, current_version: str):
+        super().__init__()
+        self._current = current_version
+
+    def run(self) -> None:
+        try:
+            info = check_for_update(self._current)
+            if info is not None and info.is_update:
+                self.update_available.emit(info.latest, info.url)
+        finally:
+            self.finished.emit()
+
+
+def _decode_thumbnail(data: bytes) -> tuple[Optional[QImage], Optional[bytes]]:
+    """Return (QImage, PNG bytes) for a thumbnail, or (None, None) on failure."""
     try:
         from PIL import Image
     except ImportError:
-        return None
+        return None, None
     try:
         with Image.open(io.BytesIO(data)) as img:
             img.draft("RGB", (THUMB_SIZE * 2, THUMB_SIZE * 2))  # speed hint
             img = img.convert("RGBA")
             img.thumbnail((THUMB_SIZE, THUMB_SIZE))
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            png = buf.getvalue()
             qimg = QImage(
                 img.tobytes("raw", "RGBA"),
                 img.width,
                 img.height,
                 QImage.Format.Format_RGBA8888,
             )
-            return qimg.copy()  # detach from the temporary buffer
+            return qimg.copy(), png
     except Exception as exc:  # noqa: BLE001
         log.debug("thumbnail decode failed: %s", exc)
-        return None
+        return None, None
+
+
+def _qimage_from_png(png: bytes) -> Optional[QImage]:
+    img = QImage()
+    if img.loadFromData(png, "PNG"):
+        return img
+    return None

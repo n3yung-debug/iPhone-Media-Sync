@@ -8,6 +8,7 @@ from typing import Optional
 from PySide6.QtCore import QThread
 from PySide6.QtGui import QIcon, QImage
 from PySide6.QtWidgets import (
+    QApplication,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -22,7 +23,11 @@ from .. import __version__
 from ..core.backup import BackupResult
 from ..core.config import Config
 from ..core.dedupe import find_exact_duplicates, find_similar_images
+from ..core.estimate import estimate_backup
 from ..core.index import BackupIndex
+from ..core.live_photos import expand_with_live_partners, pair_live_photos
+from ..core.scan_cache import ScanCache
+from ..core.storage import free_bytes, human_bytes
 from ..device.detector import DeviceDetector
 from ..device.models import DeviceInfo, MediaItem
 from .backup_tab import BackupTab
@@ -30,7 +35,14 @@ from .cleanup_tab import CleanupTab
 from .duplicates_tab import DuplicatesTab
 from .resources import APP_ICON
 from .settings_dialog import SettingsDialog
-from .workers import AnalyzeWorker, BackupWorker, DeleteWorker, ScanWorker
+from .theme import apply_theme
+from .workers import (
+    AnalyzeWorker,
+    BackupWorker,
+    DeleteWorker,
+    ScanWorker,
+    UpdateCheckWorker,
+)
 
 log = logging.getLogger(__name__)
 
@@ -47,16 +59,24 @@ class MainWindow(QMainWindow):
 
         self.config = Config.load()
         self.index = BackupIndex()
+        self.cache = ScanCache()
 
         self.udid: Optional[str] = None
         self.items: list[MediaItem] = []
+        self._by_path: dict[str, MediaItem] = {}
         self.thumb_cache: dict[str, QImage] = {}
         self._threads: dict[str, tuple[QThread, object]] = {}
+        self._last_failed: list[MediaItem] = []
+        self._pending_delete: list[MediaItem] = []
 
         # Tabs
         self.backup_tab = BackupTab()
         self.duplicates_tab = DuplicatesTab(threshold=self.config.perceptual_threshold)
-        self.cleanup_tab = CleanupTab(require_backup=self.config.require_backup_before_delete)
+        self.cleanup_tab = CleanupTab(
+            require_backup=self.config.require_backup_before_delete,
+            blurry_threshold=self.config.blurry_threshold,
+            large_video_mb=self.config.large_video_mb,
+        )
         self.duplicates_tab.set_thumb_cache(self.thumb_cache)
 
         self.tabs = QTabWidget()
@@ -77,6 +97,9 @@ class MainWindow(QMainWindow):
         self.detector.device_disconnected.connect(self._on_device_disconnected)
         self.detector.start()
 
+        if self.config.check_updates:
+            self._start_update_check()
+
     # -- setup ------------------------------------------------------------
     def _build_toolbar(self) -> None:
         bar = QToolBar()
@@ -88,6 +111,10 @@ class MainWindow(QMainWindow):
         spacer.setSizePolicy(spacer.sizePolicy().horizontalPolicy().Expanding,  # type: ignore[attr-defined]
                              spacer.sizePolicy().verticalPolicy())
         bar.addWidget(spacer)
+        self._update_label = QLabel("")
+        self._update_label.setOpenExternalLinks(True)
+        self._update_label.setVisible(False)
+        bar.addWidget(self._update_label)
         version_label = QLabel(f"v{__version__}  ")
         version_label.setStyleSheet("color: #b3a9cc;")
         bar.addWidget(version_label)
@@ -98,6 +125,7 @@ class MainWindow(QMainWindow):
     def _wire_signals(self) -> None:
         self.backup_tab.backup_clicked.connect(self._start_backup)
         self.backup_tab.cancel_clicked.connect(self._cancel_backup)
+        self.backup_tab.retry_clicked.connect(self._retry_failed)
         self.duplicates_tab.find_clicked.connect(self._find_duplicates)
         self.duplicates_tab.exclude_clicked.connect(self._exclude_from_backup)
         self.duplicates_tab.delete_clicked.connect(self._delete_items)
@@ -118,6 +146,7 @@ class MainWindow(QMainWindow):
             return
         self.udid = None
         self.items = []
+        self._by_path = {}
         self.thumb_cache.clear()
         self._device_label.setText("  No device  ")
         self._set_device_status("Device disconnected.")
@@ -127,6 +156,10 @@ class MainWindow(QMainWindow):
         self.cleanup_tab.grid.clear_items()
 
     # -- scan + analyze ---------------------------------------------------
+    def _grid_items(self) -> list[MediaItem]:
+        """Items shown in grids: hide Live Photo motion components."""
+        return [it for it in self.items if not it.is_live_motion]
+
     def _start_scan(self) -> None:
         if not self.udid:
             return
@@ -136,17 +169,21 @@ class MainWindow(QMainWindow):
         self._run("scan", worker)
 
     def _on_scan_done(self, items: list[MediaItem]) -> None:
+        pair_live_photos(items)
         self.items = items
+        self._by_path = {it.afc_path: it for it in items}
         self.thumb_cache.clear()
+        grid_items = self._grid_items()
         self.backup_tab.grid.clear_items()
-        self.backup_tab.grid.add_items(items, checked=True)
-        self.cleanup_tab.populate(items)
+        self.backup_tab.grid.add_items(grid_items, checked=True)
+        self.cleanup_tab.populate(grid_items)
         self.backup_tab.set_ready(True)
         photos = sum(1 for it in items if it.kind.value == "photo")
         videos = sum(1 for it in items if it.kind.value == "video")
+        lives = sum(1 for it in items if it.has_live_motion)
         self._set_device_status(
-            f"Found {len(items)} items ({photos} photos, {videos} videos). "
-            "Analyzing for thumbnails and duplicates…"
+            f"Found {len(items)} items ({photos} photos, {videos} videos, "
+            f"{lives} Live Photos). Analyzing…"
         )
         self._start_analyze()
 
@@ -154,7 +191,7 @@ class MainWindow(QMainWindow):
         if not self.udid:
             return
         worker = AnalyzeWorker(
-            self.udid, self.items, self.index,
+            self.udid, self.items, self.index, self.cache,
             want_perceptual=self.config.detect_perceptual,
         )
         worker.thumb_ready.connect(self._on_thumb_ready)
@@ -178,29 +215,66 @@ class MainWindow(QMainWindow):
 
     def _on_analyze_done(self) -> None:
         self.cleanup_tab._apply_filter()
-        self._set_device_status("Ready. Review and back up, or check the Duplicates tab.")
+        self.backup_tab._refilter()
+        self._set_device_status(
+            "Ready. Review and back up, or check the Duplicates tab. "
+            + self._storage_summary()
+        )
 
     # -- backup -----------------------------------------------------------
     def _start_backup(self) -> None:
-        if not self.udid:
-            return
-        if not self.config.backup_targets:
-            QMessageBox.information(
-                self, "Choose a destination",
-                "Pick at least one backup folder in Settings first.",
-            )
-            self._open_settings()
-            if not self.config.backup_targets:
-                return
         selected = self.backup_tab.grid.checked_items()
+        if not self._ensure_target():
+            return
         if not selected:
             QMessageBox.information(self, "Nothing selected",
                                     "Check at least one item to back up.")
             return
+        self._run_backup(selected, confirm=True)
+
+    def _retry_failed(self) -> None:
+        if self._last_failed:
+            self._run_backup(list(self._last_failed), confirm=False)
+
+    def _ensure_target(self) -> bool:
+        if self.config.backup_targets:
+            return True
+        QMessageBox.information(
+            self, "Choose a destination",
+            "Pick at least one backup folder in Settings first.",
+        )
+        self._open_settings()
+        return bool(self.config.backup_targets)
+
+    def _run_backup(self, selected: list[MediaItem], confirm: bool) -> None:
+        if not self.udid:
+            return
+        # Keep Live Photo stills + their motion .MOV together.
+        items = expand_with_live_partners(selected, self._by_path)
+        est = estimate_backup(items)
+
+        if confirm:
+            if est.new == 0:
+                QMessageBox.information(
+                    self, "Nothing new",
+                    "Everything selected is already backed up.",
+                )
+                return
+            warning = self._storage_warning(est.bytes_new)
+            proceed = QMessageBox.question(
+                self, "Back up?",
+                f"{est.summary()}\n\nDestinations: {len(self.config.backup_targets)}."
+                f"{warning}\n\nProceed?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes,
+            )
+            if proceed != QMessageBox.StandardButton.Yes:
+                return
 
         self.backup_tab.set_busy(True)
-        self.backup_tab.progress.setRange(0, len(selected))
-        worker = BackupWorker(self.config, self.index, self.udid, selected)
+        self.backup_tab.show_retry(0)
+        self.backup_tab.progress.setRange(0, len(items))
+        worker = BackupWorker(self.config, self.index, self.udid, items)
         worker.progress.connect(self._on_backup_progress)
         worker.message.connect(self.backup_tab.set_status)
         worker.finished.connect(self._on_backup_done)
@@ -224,13 +298,17 @@ class MainWindow(QMainWindow):
             self.backup_tab.grid.refresh_label(it)
             self.cleanup_tab.grid.refresh_label(it)
         self.cleanup_tab._apply_filter()
+        self._last_failed = list(result.failed_items)
+        self.backup_tab.show_retry(len(self._last_failed))
         msg = (
             f"Backed up {result.copied} item(s), "
             f"{result.bytes_copied / (1024*1024):.0f} MB. "
             f"Skipped {result.skipped_existing} already-backed-up."
         )
         if result.failed:
-            msg += f" {result.failed} failed."
+            msg += f" {result.failed} failed (use 'Retry failed')."
+        if result.manifest_paths:
+            msg += f" Manifest: {result.manifest_paths[0]}"
         self.backup_tab.set_status(msg)
         self._set_device_status(msg)
         if result.errors:
@@ -267,6 +345,8 @@ class MainWindow(QMainWindow):
     def _delete_items(self, items: list[MediaItem]) -> None:
         if not self.udid or not items:
             return
+        # Deleting one half of a Live Photo removes both.
+        items = expand_with_live_partners(items, self._by_path)
         not_backed = [it for it in items if not it.backed_up]
         if self.config.require_backup_before_delete and not_backed:
             QMessageBox.warning(
@@ -287,6 +367,7 @@ class MainWindow(QMainWindow):
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
+        self._pending_delete = items
         worker = DeleteWorker(self.udid, items)
         worker.finished.connect(self._on_delete_done)
         worker.error.connect(self._on_worker_error)
@@ -295,24 +376,59 @@ class MainWindow(QMainWindow):
 
     def _on_delete_done(self, deleted: int, errors: list) -> None:
         self.cleanup_tab.set_busy(False)
-        # Drop deleted items from the in-memory model and grids.
-        gone = {it.afc_path for it in self.cleanup_tab.grid.checked_items()}
+        gone = {it.afc_path for it in self._pending_delete}
         self.items = [it for it in self.items if it.afc_path not in gone]
+        self._by_path = {it.afc_path: it for it in self.items}
         self.cleanup_tab.grid.remove_paths(gone)
         self.backup_tab.grid.remove_paths(gone)
+        self._pending_delete = []
         msg = f"Deleted {deleted} item(s) from the phone."
         if errors:
             msg += f" {len(errors)} failed."
             QMessageBox.warning(self, "Some deletions failed", "\n".join(errors[:20]))
         self._set_device_status(msg)
 
+    # -- updates ----------------------------------------------------------
+    def _start_update_check(self) -> None:
+        worker = UpdateCheckWorker(__version__)
+        worker.update_available.connect(self._on_update_available)
+        self._run("update", worker)
+
+    def _on_update_available(self, latest: str, url: str) -> None:
+        self._update_label.setText(
+            f'<a href="{url}" style="color:#b389ff;">Update {latest} available</a>  '
+        )
+        self._update_label.setVisible(True)
+
     # -- misc -------------------------------------------------------------
+    def _storage_summary(self) -> str:
+        parts = []
+        for t in self.config.backup_targets:
+            parts.append(f"{t}: {human_bytes(free_bytes(t))} free")
+        return " · ".join(parts)
+
+    def _storage_warning(self, need_bytes: int) -> str:
+        frees = [free_bytes(t) for t in self.config.backup_targets]
+        avail = [f for f in frees if f is not None]
+        if avail and need_bytes > min(avail):
+            return (
+                f"\n\n⚠ This may not fit: needs {human_bytes(need_bytes)}, "
+                f"smallest destination has {human_bytes(min(avail))} free."
+            )
+        return ""
+
     def _open_settings(self) -> None:
         dlg = SettingsDialog(self.config, self)
         if dlg.exec():
             self.config = dlg.result_config()
             self.config.save()
-            self.cleanup_tab._require_backup = self.config.require_backup_before_delete
+            self.cleanup_tab.set_require_backup(self.config.require_backup_before_delete)
+            self.cleanup_tab.set_thresholds(
+                self.config.blurry_threshold, self.config.large_video_mb
+            )
+            app = QApplication.instance()
+            if app is not None:
+                apply_theme(app, self.config.theme)
 
     def _on_worker_error(self, message: str) -> None:
         self._set_device_status(message)
@@ -339,7 +455,7 @@ class MainWindow(QMainWindow):
             thread.quit()
             thread.wait(2000)
 
-        for sig_name in ("finished", "error"):
+        for sig_name in ("finished", "error", "update_available"):
             sig = getattr(worker, sig_name, None)
             if sig is not None:
                 sig.connect(cleanup)
@@ -353,4 +469,5 @@ class MainWindow(QMainWindow):
             thread.quit()
             thread.wait(2000)
         self.index.close()
+        self.cache.close()
         super().closeEvent(event)
