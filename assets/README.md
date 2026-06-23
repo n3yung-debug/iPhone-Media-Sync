@@ -2,10 +2,11 @@
 
 ## Application icon
 
-Put your icon here, named exactly:
+Put your icon here, named either:
 
 ```
-assets/app.ico
+assets/app.ico        (preferred)
+assets/favicon.ico    (also accepted)
 ```
 
 - It must be a Windows `.ico` file (not `.png`/`.jpg`). If you have a PNG,

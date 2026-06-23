@@ -16,9 +16,11 @@ binaries = []
 hiddenimports = []
 
 # Bundle the app icon (if present) so it can also be shown at runtime as the
-# window / taskbar icon, not just baked into the .exe.
-if os.path.exists("assets/app.ico"):
-    datas.append(("assets/app.ico", "assets"))
+# window / taskbar icon, not just baked into the .exe. Accept either name.
+icon_candidates = ["assets/app.ico", "assets/favicon.ico"]
+icon_file = next((p for p in icon_candidates if os.path.exists(p)), None)
+if icon_file:
+    datas.append((icon_file, "assets"))
 
 # These packages load submodules / data files dynamically, so collect them
 # fully rather than relying on static import analysis. (PySide6 is handled by
@@ -58,7 +60,7 @@ exe = EXE(
     upx=True,
     console=False,            # windowed app, no console window
     disable_windowed_traceback=False,
-    icon="assets/app.ico" if __import__("os").path.exists("assets/app.ico") else None,
+    icon=icon_file,           # detected above (app.ico / favicon.ico), or None
 )
 
 coll = COLLECT(
