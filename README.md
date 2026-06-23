@@ -49,6 +49,30 @@ python -m iphone_media_sync
 
 (Run from the `src/` directory, or install the package with `pip install -e .`)
 
+## Build a standalone .exe (no Python needed to run)
+
+You have two options:
+
+### Option A — build it yourself on Windows
+Double-click **`build.bat`** (or run it from a command prompt). It sets up a
+virtual environment, installs everything, and produces:
+
+```
+dist\iPhoneMediaSync.exe
+```
+
+Double-click that `.exe` to launch the app — no Python required afterwards.
+
+### Option B — download a pre-built .exe from GitHub Actions
+Every push builds the executable on a Windows runner. Go to the repo's
+**Actions → "Build Windows EXE"** run, and download the
+**`iPhoneMediaSync-windows`** artifact. Unzip it and run the `.exe`.
+
+> The first launch may be a little slow (a single-file build unpacks itself to
+> a temp folder). Windows SmartScreen may warn about an unsigned app — choose
+> *More info → Run anyway*. To use a custom icon, drop an `assets\app.ico`
+> file before building.
+
 ## Project layout
 
 ```
