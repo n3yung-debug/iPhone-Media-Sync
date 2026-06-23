@@ -175,36 +175,60 @@ class BackupWorker(QObject):
 
 
 class DeleteWorker(QObject):
-    """Deletes the given items from the device. Caller must confirm first."""
+    """Deletes the given items from the device. Caller must confirm first.
+
+    If ``quarantine_dir`` is set, each file is copied there before deletion;
+    if that copy fails, the file is NOT deleted (so nothing is lost).
+    """
 
     progress = Signal(int, int, str)
-    finished = Signal(int, list)  # deleted_count, errors
+    finished = Signal(list, list, str)  # deleted_paths, errors, quarantine_dir
     error = Signal(str)
 
-    def __init__(self, udid: str, items: list[MediaItem]):
+    def __init__(self, udid: str, items: list[MediaItem],
+                 quarantine_dir: Optional[str] = None):
         super().__init__()
         self._udid = udid
         self._items = items
+        self._quarantine_dir = quarantine_dir
 
     def run(self) -> None:
-        deleted = 0
+        from ..core.quarantine import batch_dir, unique_path
+
+        deleted_paths: list[str] = []
         errors: list[str] = []
         total = len(self._items)
+        batch = batch_dir(self._quarantine_dir) if self._quarantine_dir else None
         try:
             with AfcMedia(self._udid) as media:
                 for i, item in enumerate(self._items, start=1):
                     self.progress.emit(i, total, item.filename)
+                    if batch is not None and not self._quarantine(
+                        media, item, batch, unique_path, errors
+                    ):
+                        continue  # quarantine failed -> don't delete
                     try:
                         media.delete(item.afc_path)
-                        deleted += 1
+                        deleted_paths.append(item.afc_path)
                     except DeviceError as exc:
                         errors.append(f"{item.filename}: {exc}")
-            self.finished.emit(deleted, errors)
+            self.finished.emit(deleted_paths, errors, str(batch) if batch else "")
         except DeviceError as exc:
             self.error.emit(str(exc))
         except Exception as exc:  # noqa: BLE001
             log.exception("delete failed")
             self.error.emit(f"Unexpected error during delete: {exc}")
+
+    def _quarantine(self, media, item, batch, unique_path, errors) -> bool:
+        try:
+            data = media.read_bytes(item.afc_path)
+            dest = unique_path(batch / item.filename)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(data)
+            return True
+        except (DeviceError, OSError) as exc:
+            errors.append(f"{item.filename}: quarantine failed, NOT deleted ({exc})")
+            return False
 
 
 class UpdateCheckWorker(QObject):

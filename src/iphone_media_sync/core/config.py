@@ -31,6 +31,11 @@ class Config:
     # Only allow marking phone media for deletion once it's verified-backed-up.
     require_backup_before_delete: bool = True
 
+    # Before deleting from the phone, copy each file into a local quarantine
+    # folder so the deletion is reversible. Empty dir = a default under APP_DIR.
+    quarantine_before_delete: bool = True
+    quarantine_dir: str = ""
+
     # UI theme: "dark" or "light" (both purple).
     theme: str = "dark"
 

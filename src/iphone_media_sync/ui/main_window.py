@@ -26,6 +26,7 @@ from ..core.dedupe import find_exact_duplicates, find_similar_images
 from ..core.estimate import estimate_backup
 from ..core.index import BackupIndex
 from ..core.live_photos import expand_with_live_partners, pair_live_photos
+from ..core.quarantine import resolve_dir
 from ..core.scan_cache import ScanCache
 from ..core.storage import free_bytes, human_bytes
 from ..device.detector import DeviceDetector
@@ -67,7 +68,6 @@ class MainWindow(QMainWindow):
         self.thumb_cache: dict[str, QImage] = {}
         self._threads: dict[str, tuple[QThread, object]] = {}
         self._last_failed: list[MediaItem] = []
-        self._pending_delete: list[MediaItem] = []
 
         # Tabs
         self.backup_tab = BackupTab()
@@ -357,35 +357,48 @@ class MainWindow(QMainWindow):
             return
 
         mb = sum(it.size for it in items) / (1024 * 1024)
+        if self.config.quarantine_before_delete:
+            where = resolve_dir(self.config.quarantine_dir)
+            safety = (
+                f"\n\nA reversible copy will first be saved to:\n{where}"
+            )
+        else:
+            safety = "\n\nThis cannot be undone."
         confirm = QMessageBox.question(
             self, "Delete from phone?",
-            f"Permanently delete {len(items)} item(s) ({mb:.0f} MB) from the iPhone?\n\n"
-            "This cannot be undone.",
+            f"Delete {len(items)} item(s) ({mb:.0f} MB) from the iPhone?{safety}",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
-        self._pending_delete = items
-        worker = DeleteWorker(self.udid, items)
+        qdir = (
+            (self.config.quarantine_dir or str(resolve_dir("")))
+            if self.config.quarantine_before_delete
+            else None
+        )
+        worker = DeleteWorker(self.udid, items, qdir)
         worker.finished.connect(self._on_delete_done)
         worker.error.connect(self._on_worker_error)
         self.cleanup_tab.set_busy(True)
         self._run("delete", worker)
 
-    def _on_delete_done(self, deleted: int, errors: list) -> None:
+    def _on_delete_done(self, deleted_paths: list, errors: list,
+                        quarantine_dir: str) -> None:
         self.cleanup_tab.set_busy(False)
-        gone = {it.afc_path for it in self._pending_delete}
+        gone = set(deleted_paths)
         self.items = [it for it in self.items if it.afc_path not in gone]
         self._by_path = {it.afc_path: it for it in self.items}
         self.cleanup_tab.grid.remove_paths(gone)
         self.backup_tab.grid.remove_paths(gone)
-        self._pending_delete = []
-        msg = f"Deleted {deleted} item(s) from the phone."
+        msg = f"Deleted {len(gone)} item(s) from the phone."
+        if quarantine_dir:
+            msg += f" Copies saved to {quarantine_dir} (delete that folder to reclaim disk space)."
         if errors:
-            msg += f" {len(errors)} failed."
-            QMessageBox.warning(self, "Some deletions failed", "\n".join(errors[:20]))
+            msg += f" {len(errors)} not deleted."
+            QMessageBox.warning(self, "Some items were not deleted",
+                                "\n".join(errors[:20]))
         self._set_device_status(msg)
 
     # -- updates ----------------------------------------------------------
