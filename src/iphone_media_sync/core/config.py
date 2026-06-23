@@ -31,6 +31,16 @@ class Config:
     # Only allow marking phone media for deletion once it's verified-backed-up.
     require_backup_before_delete: bool = True
 
+    # UI theme: "dark" or "light" (both purple).
+    theme: str = "dark"
+
+    # Check GitHub for a newer release on startup.
+    check_updates: bool = True
+
+    # Cleanup-candidate thresholds.
+    blurry_threshold: float = 50.0   # sharpness below this = "blurry" candidate
+    large_video_mb: int = 200        # videos at/above this size = "large" candidate
+
     def save(self) -> None:
         APP_DIR.mkdir(parents=True, exist_ok=True)
         CONFIG_PATH.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")

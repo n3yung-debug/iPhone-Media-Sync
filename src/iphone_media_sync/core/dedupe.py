@@ -128,6 +128,11 @@ def find_similar_images(
 
 
 def _make_group(members: list[MediaItem], exact: bool) -> DuplicateGroup:
-    # Suggest keeping the largest file (best quality original).
-    best = max(range(len(members)), key=lambda i: members[i].size)
+    # Suggest keeping the best-of-burst: the sharpest frame, then the largest
+    # file as a tie-break (and as the fallback when sharpness is unknown).
+    def score(i: int) -> tuple[float, int]:
+        sharp = members[i].sharpness
+        return (sharp if sharp is not None else -1.0, members[i].size)
+
+    best = max(range(len(members)), key=score)
     return DuplicateGroup(items=list(members), exact=exact, suggested_keep=best)

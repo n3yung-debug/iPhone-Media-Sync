@@ -109,15 +109,48 @@ class MediaGrid(QListWidget):
     def all_items(self) -> list[MediaItem]:
         return [self.item(i).data(_ROLE_ITEM) for i in range(self.count())]
 
+    # -- filtering --------------------------------------------------------
+    def apply_filter(self, predicate) -> None:
+        """Show only items for which ``predicate(media)`` is True (view only)."""
+        for i in range(self.count()):
+            it = self.item(i)
+            it.setHidden(not predicate(it.data(_ROLE_ITEM)))
+
+    def visible_checked_items(self) -> list[MediaItem]:
+        out = []
+        for i in range(self.count()):
+            it = self.item(i)
+            if not it.isHidden() and it.checkState() == Qt.CheckState.Checked:
+                out.append(it.data(_ROLE_ITEM))
+        return out
+
     # -- formatting -------------------------------------------------------
     @staticmethod
     def _label_for(media: MediaItem) -> str:
-        badge = "✅ " if media.backed_up else ""
-        return f"{badge}{media.filename}"
+        badges = ""
+        if media.backed_up:
+            badges += "✅"
+        if media.has_live_motion:
+            badges += "◉"
+        if media.is_screenshot:
+            badges += "▫"
+        if badges:
+            badges += " "
+        return f"{badges}{media.filename}"
 
     @staticmethod
     def _tooltip_for(media: MediaItem) -> str:
         mb = media.size / (1024 * 1024) if media.size else 0
-        when = media.modified.strftime("%Y-%m-%d %H:%M") if media.modified else "unknown"
+        when = media.best_date.strftime("%Y-%m-%d %H:%M") if media.best_date else "unknown"
         status = "already backed up" if media.backed_up else "not yet backed up"
-        return f"{media.afc_path}\n{mb:.1f} MB · {when}\n{status}"
+        lines = [media.afc_path, f"{mb:.1f} MB · {when}", status]
+        if media.width and media.height:
+            lines.append(f"{media.width}×{media.height}")
+        extras = []
+        if media.has_live_motion:
+            extras.append("Live Photo")
+        if media.is_screenshot:
+            extras.append("screenshot")
+        if extras:
+            lines.append(", ".join(extras))
+        return "\n".join(lines)

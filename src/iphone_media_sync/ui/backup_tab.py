@@ -12,16 +12,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .filter_bar import FilterBar
 from .thumbnail_grid import MediaGrid
 
 
 class BackupTab(QWidget):
     backup_clicked = Signal()
     cancel_clicked = Signal()
+    retry_clicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.grid = MediaGrid()
+        self.filter = FilterBar()
+        self.filter.changed.connect(self._refilter)
 
         self._summary = QLabel("Connect an iPhone to begin.")
         select_all = QPushButton("Select all")
@@ -39,6 +43,9 @@ class BackupTab(QWidget):
         self.progress.setVisible(False)
         self._status = QLabel("")
 
+        self.retry_btn = QPushButton("Retry failed")
+        self.retry_btn.setVisible(False)
+        self.retry_btn.clicked.connect(self.retry_clicked)
         self.backup_btn = QPushButton("Back up selected")
         self.backup_btn.setEnabled(False)
         self.backup_btn.clicked.connect(self.backup_clicked)
@@ -48,11 +55,13 @@ class BackupTab(QWidget):
 
         bottom = QHBoxLayout()
         bottom.addWidget(self._status, 1)
+        bottom.addWidget(self.retry_btn)
         bottom.addWidget(self.cancel_btn)
         bottom.addWidget(self.backup_btn)
 
         layout = QVBoxLayout(self)
         layout.addLayout(top)
+        layout.addWidget(self.filter)
         layout.addWidget(self.grid, 1)
         layout.addWidget(self.progress)
         layout.addLayout(bottom)
@@ -73,6 +82,13 @@ class BackupTab(QWidget):
 
     def set_ready(self, ready: bool) -> None:
         self.backup_btn.setEnabled(ready and self.grid.count() > 0)
+
+    def show_retry(self, count: int) -> None:
+        self.retry_btn.setVisible(count > 0)
+        self.retry_btn.setText(f"Retry {count} failed" if count else "Retry failed")
+
+    def _refilter(self) -> None:
+        self.grid.apply_filter(self.filter.matches)
 
     def _update_summary(self) -> None:
         total = self.grid.count()

@@ -46,6 +46,19 @@ class MediaItem:
     sha256: Optional[str] = None
     phash: Optional[str] = None  # perceptual hash, hex string
 
+    # Photo metadata (filled in during analysis).
+    capture_date: Optional[datetime] = None  # from EXIF, when available
+    width: Optional[int] = None
+    height: Optional[int] = None
+    sharpness: Optional[float] = None  # higher = sharper; None = unknown
+    is_screenshot: bool = False
+
+    # Live Photo linkage. A Live Photo is a still (HEIC/JPG) plus a .MOV with
+    # the same basename. ``live_partner`` is the other half's afc_path.
+    live_partner: Optional[str] = None
+    is_live_motion: bool = False   # True for the .MOV component
+    has_live_motion: bool = False  # True for the still that owns a .MOV
+
     # Whether this exact file (by sha256) is already present at a backup target.
     backed_up: bool = False
 
@@ -56,6 +69,11 @@ class MediaItem:
     @property
     def extension(self) -> str:
         return os.path.splitext(self.afc_path)[1].lower()
+
+    @property
+    def best_date(self) -> Optional[datetime]:
+        """Capture date if known (EXIF), else the file's modified time."""
+        return self.capture_date or self.modified
 
 
 @dataclass
