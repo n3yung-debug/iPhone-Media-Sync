@@ -1,5 +1,7 @@
-# iPhone access (detection, AFC media read/delete) — pure Python, works on Windows
-pymobiledevice3>=4.0.0
+# iPhone access (detection, AFC media read/delete) — pure Python, works on Windows.
+# Pinned below 8.0: pymobiledevice3 8.x+ rewrote the API to async; this app uses
+# the synchronous API (7.x is the last sync line).
+pymobiledevice3>=7.0.0,<8
 
 # GUI
 PySide6>=6.6.0
