@@ -1,30 +1,27 @@
-# iPhone Media Sync v1.2.2
+# iPhone Media Sync v1.2.3
 
-## Fix in 1.2.2 — iPhone detection
-- **Fixes the iPhone not being detected.** The `pymobiledevice3` dependency was
-  unpinned, so builds pulled its 8.x/9.x release, which rewrote the API to be
-  **async** — the app's synchronous calls silently returned un-awaited
-  coroutines and no device was ever found. Pinned to the last synchronous line
-  (`>=7.0.0,<8`), which matches the app's code.
+## Fix in 1.2.3 — detection (the real one)
+- **Bundles the missing `win32security` (pywin32) module.** On Windows,
+  `pymobiledevice3` 7.x imports `win32security` at runtime but doesn't declare
+  `pywin32` as a dependency, so it was neither installed nor packaged — and
+  device detection failed with `ModuleNotFoundError: No module named
+  'win32security'`. The app now depends on `pywin32` and force-bundles it.
+- Builds on v1.2.2, which pinned `pymobiledevice3` to its synchronous line.
 
-If you're upgrading and still see "No device," click **Diagnostics** in the
-toolbar and it should now report the device. On Windows you still need the
-classic **Apple Mobile Device Service** (desktop iTunes from apple.com).
+If detection still fails, click **Diagnostics** and send the report. On Windows
+you also need the classic **Apple Mobile Device Service** (desktop iTunes from
+apple.com).
 
-## From 1.2.1
-- Diagnostics button and a rotating log file for troubleshooting detection.
-
-## From 1.2.0
-- Windows installer, quarantine-on-delete, and continuous integration.
-
-## From 1.1.0
-- Live Photos, EXIF capture-date foldering, filter & search, best-of-burst
-  duplicate selection, pre-backup dry-run, resume/retry, faster re-scans,
-  cleanup-candidate selectors, CSV manifest, storage readouts, folder template,
-  update checker, and a light theme.
+## Recent history
+- **1.2.2** — pin `pymobiledevice3>=7.0.0,<8` (8.x+ went async).
+- **1.2.1** — Diagnostics button + rotating log file.
+- **1.2.0** — Windows installer, quarantine-on-delete, CI.
+- **1.1.0** — Live Photos, EXIF dates, filters, best-of-burst, dry-run,
+  resume/retry, scan cache, cleanup candidates, manifest, storage readouts,
+  folder template, update checker, light theme.
 
 ## Download
-- **Installer (recommended):** `iPhoneMediaSync-Setup-1.2.2.exe`
+- **Installer (recommended):** `iPhoneMediaSync-Setup-1.2.3.exe`
 - **Portable:** `iPhoneMediaSync-windows.zip`
 
 On first connection, unlock the iPhone and tap "Trust This Computer."
