@@ -2,12 +2,41 @@
 
 from __future__ import annotations
 
+import logging
+import logging.handlers
 import sys
+from pathlib import Path
+
+from .core.config import APP_DIR
+
+LOG_DIR = APP_DIR / "logs"
+LOG_PATH = LOG_DIR / "app.log"
+
+
+def setup_logging() -> Path:
+    """Configure root logging to a rotating file (and stderr). Returns the path."""
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    file_handler = logging.handlers.RotatingFileHandler(
+        LOG_PATH, maxBytes=1_000_000, backupCount=3, encoding="utf-8"
+    )
+    file_handler.setFormatter(fmt)
+    root.addHandler(file_handler)
+
+    stream = logging.StreamHandler()
+    stream.setFormatter(fmt)
+    root.addHandler(stream)
+    return LOG_PATH
 
 
 def main() -> int:
-    # Imported lazily so that `--help`-style failures don't require a full Qt
-    # install just to print an error.
+    log_path = setup_logging()
+    logging.getLogger(__name__).info("Starting iPhone Media Sync (log: %s)", log_path)
+
+    # Imported after logging is configured.
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
 

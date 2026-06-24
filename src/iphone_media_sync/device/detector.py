@@ -18,16 +18,26 @@ from .models import DeviceInfo
 log = logging.getLogger(__name__)
 
 
+_warned_import = False
+_warned_list = False
+
+
 def list_connected_udids() -> list[str]:
     """Return the UDIDs of all currently-attached devices (empty on error)."""
+    global _warned_import, _warned_list
     try:
         from pymobiledevice3.usbmux import list_devices
-    except ImportError:
+    except Exception:  # noqa: BLE001 - import can fail in packaged builds
+        if not _warned_import:
+            log.warning("pymobiledevice3 could not be imported", exc_info=True)
+            _warned_import = True
         return []
     try:
         devices = list_devices()
-    except Exception as exc:  # usbmuxd not running, etc.
-        log.debug("usbmux list_devices failed: %s", exc)
+    except Exception:  # usbmuxd not running / unreachable
+        if not _warned_list:
+            log.warning("usbmux list_devices() failed", exc_info=True)
+            _warned_list = True
         return []
 
     udids: list[str] = []
