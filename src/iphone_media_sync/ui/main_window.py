@@ -118,6 +118,9 @@ class MainWindow(QMainWindow):
         version_label = QLabel(f"v{__version__}  ")
         version_label.setStyleSheet("color: #b3a9cc;")
         bar.addWidget(version_label)
+        diagnostics_btn = QPushButton("Diagnostics")
+        diagnostics_btn.clicked.connect(self._open_diagnostics)
+        bar.addWidget(diagnostics_btn)
         settings_btn = QPushButton("Settings…")
         settings_btn.clicked.connect(self._open_settings)
         bar.addWidget(settings_btn)
@@ -429,6 +432,25 @@ class MainWindow(QMainWindow):
                 f"smallest destination has {human_bytes(min(avail))} free."
             )
         return ""
+
+    def _open_diagnostics(self) -> None:
+        from ..device.diagnostics import run_diagnostics
+
+        try:
+            report = run_diagnostics()
+        except Exception as exc:  # noqa: BLE001
+            report = f"Diagnostics crashed: {exc}"
+        log.info("Diagnostics:\n%s", report)
+
+        box = QMessageBox(self)
+        box.setWindowTitle("Diagnostics")
+        box.setText(
+            "Device-detection diagnostics. Copy this and send it if the app "
+            "isn't finding your iPhone:"
+        )
+        box.setDetailedText(report)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.exec()
 
     def _open_settings(self) -> None:
         dlg = SettingsDialog(self.config, self)
