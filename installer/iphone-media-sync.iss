@@ -49,3 +49,64 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+{ --- Apple Mobile Device Support bootstrap ---------------------------------
+  The app needs Apple Mobile Device Support (the usbmuxd service + USB driver)
+  to talk to an iPhone. We can't legally redistribute Apple's installer, so if
+  it's missing we download Apple's OFFICIAL iTunes installer and run it (it
+  contains Apple Mobile Device Support). The user consents first.
+}
+
+const
+  AMDS_SERVICE_KEY = 'SYSTEM\CurrentControlSet\Services\Apple Mobile Device Service';
+  ITUNES_URL = 'https://www.apple.com/itunes/download/win64';
+
+function AppleMobileDeviceSupportInstalled(): Boolean;
+begin
+  Result := RegKeyExists(HKLM, AMDS_SERVICE_KEY);
+end;
+
+function OnDownloadProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
+begin
+  Result := True;
+end;
+
+procedure EnsureAppleMobileDeviceSupport();
+var
+  ResultCode: Integer;
+  Installer: String;
+begin
+  if AppleMobileDeviceSupportInstalled() then
+    exit;
+
+  if MsgBox('iPhone Media Sync needs "Apple Mobile Device Support" (Apple''s USB'
+      + ' driver and service) to communicate with your iPhone, and it is not'
+      + ' installed yet.' + #13#10#13#10
+      + 'Download it now from Apple? This downloads Apple''s official installer'
+      + ' and runs it. (Choose No to install it yourself later.)',
+      mbConfirmation, MB_YESNO) <> IDYES then
+    exit;
+
+  Installer := ExpandConstant('{tmp}\iTunes64Setup.exe');
+  try
+    DownloadTemporaryFile(ITUNES_URL, 'iTunes64Setup.exe', '', @OnDownloadProgress);
+  except
+    MsgBox('Could not download Apple Mobile Device Support automatically.'
+        + #13#10 + 'Please install iTunes from https://www.apple.com/itunes/'
+        + ' (the desktop installer, not the Microsoft Store version).',
+        mbError, MB_OK);
+    exit;
+  end;
+
+  if not Exec(Installer, '', '', SW_SHOW, ewWaitUntilTerminated, ResultCode) then
+    MsgBox('Could not launch the Apple installer. Please install iTunes from'
+        + ' https://www.apple.com/itunes/ manually.', mbError, MB_OK);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    EnsureAppleMobileDeviceSupport();
+end;
+
