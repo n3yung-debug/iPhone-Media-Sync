@@ -32,6 +32,18 @@ for pkg in ("pymobiledevice3", "pillow_heif", "imagehash"):
     binaries += pkg_binaries
     hiddenimports += pkg_hidden
 
+# pymobiledevice3 imports win32security lazily on Windows (via pywin32) but
+# doesn't declare it, so PyInstaller's analysis misses it. Force-bundle the
+# pywin32 modules it needs.
+hiddenimports += [
+    "win32security",
+    "win32api",
+    "win32file",
+    "win32con",
+    "pywintypes",
+    "pythoncom",
+]
+
 a = Analysis(
     ["launcher.py"],
     pathex=["src"],
