@@ -1,20 +1,18 @@
-# iPhone Media Sync v1.2.1
+# iPhone Media Sync v1.2.2
 
-## New in 1.2.1
-- **Diagnostics button** (toolbar) — reports exactly why the app can or can't
-  see your iPhone (library load, Apple Mobile Device Service reachability,
-  device list, and pairing), with full error detail you can copy.
-- **Log file** — the app now writes a rotating log to
-  `%USERPROFILE%\.iphone-media-sync\logs\app.log` so detection problems can be
-  diagnosed after the fact.
-- Detection failures are now recorded with the real underlying error instead of
-  failing silently.
+## Fix in 1.2.2 — iPhone detection
+- **Fixes the iPhone not being detected.** The `pymobiledevice3` dependency was
+  unpinned, so builds pulled its 8.x/9.x release, which rewrote the API to be
+  **async** — the app's synchronous calls silently returned un-awaited
+  coroutines and no device was ever found. Pinned to the last synchronous line
+  (`>=7.0.0,<8`), which matches the app's code.
 
-### Troubleshooting detection
-On Windows, the app needs the classic **Apple Mobile Device Service** (installed
-by the desktop **iTunes from apple.com** — *not* the Microsoft Store "iTunes"
-or "Apple Devices" apps, which are sandboxed and don't install it). If the app
-shows "No device" while Windows sees the phone, click **Diagnostics**.
+If you're upgrading and still see "No device," click **Diagnostics** in the
+toolbar and it should now report the device. On Windows you still need the
+classic **Apple Mobile Device Service** (desktop iTunes from apple.com).
+
+## From 1.2.1
+- Diagnostics button and a rotating log file for troubleshooting detection.
 
 ## From 1.2.0
 - Windows installer, quarantine-on-delete, and continuous integration.
@@ -26,7 +24,7 @@ shows "No device" while Windows sees the phone, click **Diagnostics**.
   update checker, and a light theme.
 
 ## Download
-- **Installer (recommended):** `iPhoneMediaSync-Setup-1.2.1.exe`
+- **Installer (recommended):** `iPhoneMediaSync-Setup-1.2.2.exe`
 - **Portable:** `iPhoneMediaSync-windows.zip`
 
 On first connection, unlock the iPhone and tap "Trust This Computer."
