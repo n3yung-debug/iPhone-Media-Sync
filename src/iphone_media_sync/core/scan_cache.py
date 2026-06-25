@@ -35,6 +35,9 @@ class CachedAnalysis:
     height: Optional[int] = None
     sharpness: Optional[float] = None
     is_screenshot: bool = False
+    has_camera_exif: bool = False
+    unique_colors: Optional[int] = None
+    white_fraction: Optional[float] = None
     thumb_png: Optional[bytes] = None
 
 
@@ -60,13 +63,26 @@ class ScanCache:
             )
             """
         )
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after the original schema (non-destructive)."""
+        existing = {row[1] for row in self._conn.execute("PRAGMA table_info(scan_cache)")}
+        for col, decl in (
+            ("has_camera_exif", "INTEGER"),
+            ("unique_colors", "INTEGER"),
+            ("white_fraction", "REAL"),
+        ):
+            if col not in existing:
+                self._conn.execute(f"ALTER TABLE scan_cache ADD COLUMN {col} {decl}")
 
     def get(self, key: str) -> Optional[CachedAnalysis]:
         with self._lock:
             cur = self._conn.execute(
                 "SELECT sha256, phash, capture_date, width, height, sharpness, "
-                "is_screenshot, thumb_png FROM scan_cache WHERE key = ?",
+                "is_screenshot, thumb_png, has_camera_exif, unique_colors, "
+                "white_fraction FROM scan_cache WHERE key = ?",
                 (key,),
             )
             row = cur.fetchone()
@@ -87,6 +103,9 @@ class ScanCache:
             sharpness=row[5],
             is_screenshot=bool(row[6]),
             thumb_png=row[7],
+            has_camera_exif=bool(row[8]),
+            unique_colors=row[9],
+            white_fraction=row[10],
         )
 
     def put(self, key: str, rec: CachedAnalysis) -> None:
@@ -95,13 +114,17 @@ class ScanCache:
                 """
                 INSERT INTO scan_cache
                     (key, sha256, phash, capture_date, width, height,
-                     sharpness, is_screenshot, thumb_png)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     sharpness, is_screenshot, thumb_png, has_camera_exif,
+                     unique_colors, white_fraction)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(key) DO UPDATE SET
                     sha256=excluded.sha256, phash=excluded.phash,
                     capture_date=excluded.capture_date, width=excluded.width,
                     height=excluded.height, sharpness=excluded.sharpness,
-                    is_screenshot=excluded.is_screenshot, thumb_png=excluded.thumb_png
+                    is_screenshot=excluded.is_screenshot, thumb_png=excluded.thumb_png,
+                    has_camera_exif=excluded.has_camera_exif,
+                    unique_colors=excluded.unique_colors,
+                    white_fraction=excluded.white_fraction
                 """,
                 (
                     key,
@@ -113,6 +136,9 @@ class ScanCache:
                     rec.sharpness,
                     1 if rec.is_screenshot else 0,
                     rec.thumb_png,
+                    1 if rec.has_camera_exif else 0,
+                    rec.unique_colors,
+                    rec.white_fraction,
                 ),
             )
             self._conn.commit()

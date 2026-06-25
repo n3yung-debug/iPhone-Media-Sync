@@ -34,6 +34,7 @@ from ..device.models import DeviceInfo, MediaItem
 from .backup_tab import BackupTab
 from .cleanup_tab import CleanupTab
 from .duplicates_tab import DuplicatesTab
+from .probably_delete_tab import ProbablyDeleteTab
 from .resources import APP_ICON
 from .settings_dialog import SettingsDialog
 from .theme import apply_theme
@@ -78,10 +79,13 @@ class MainWindow(QMainWindow):
             large_video_mb=self.config.large_video_mb,
         )
         self.duplicates_tab.set_thumb_cache(self.thumb_cache)
+        self.probably_delete_tab = ProbablyDeleteTab()
+        self.probably_delete_tab.set_thumb_cache(self.thumb_cache)
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.backup_tab, "Backup")
         self.tabs.addTab(self.duplicates_tab, "Duplicates")
+        self.tabs.addTab(self.probably_delete_tab, "Probably Delete")
         self.tabs.addTab(self.cleanup_tab, "Free up space")
         self.setCentralWidget(self.tabs)
 
@@ -133,6 +137,7 @@ class MainWindow(QMainWindow):
         self.duplicates_tab.exclude_clicked.connect(self._exclude_from_backup)
         self.duplicates_tab.delete_clicked.connect(self._delete_items)
         self.cleanup_tab.delete_clicked.connect(self._delete_from_cleanup)
+        self.probably_delete_tab.delete_clicked.connect(self._delete_from_probably)
 
     # -- device events ----------------------------------------------------
     def _on_device_connected(self, info: DeviceInfo) -> None:
@@ -157,6 +162,7 @@ class MainWindow(QMainWindow):
         self.backup_tab.set_summary("Connect an iPhone to begin.")
         self.backup_tab.set_ready(False)
         self.cleanup_tab.grid.clear_items()
+        self.probably_delete_tab.set_items([])
 
     # -- scan + analyze ---------------------------------------------------
     def _grid_items(self) -> list[MediaItem]:
@@ -208,6 +214,7 @@ class MainWindow(QMainWindow):
         self.thumb_cache[afc_path] = image
         self.backup_tab.grid.set_thumbnail(afc_path, image)
         self.cleanup_tab.grid.set_thumbnail(afc_path, image)
+        self.probably_delete_tab.grid.set_thumbnail(afc_path, image)
 
     def _on_item_analyzed(self, item: MediaItem) -> None:
         self.backup_tab.grid.refresh_label(item)
@@ -219,9 +226,10 @@ class MainWindow(QMainWindow):
     def _on_analyze_done(self) -> None:
         self.cleanup_tab._apply_filter()
         self.backup_tab._refilter()
+        self.probably_delete_tab.set_items(self._grid_items())
         self._set_device_status(
-            "Ready. Review and back up, or check the Duplicates tab. "
-            + self._storage_summary()
+            "Ready. Review and back up, or check the Duplicates / Probably "
+            "Delete tabs. " + self._storage_summary()
         )
 
     # -- backup -----------------------------------------------------------
@@ -345,6 +353,9 @@ class MainWindow(QMainWindow):
     def _delete_from_cleanup(self) -> None:
         self._delete_items(self.cleanup_tab.grid.checked_items())
 
+    def _delete_from_probably(self) -> None:
+        self._delete_items(self.probably_delete_tab.grid.checked_items())
+
     def _delete_items(self, items: list[MediaItem]) -> None:
         if not self.udid or not items:
             return
@@ -395,6 +406,7 @@ class MainWindow(QMainWindow):
         self._by_path = {it.afc_path: it for it in self.items}
         self.cleanup_tab.grid.remove_paths(gone)
         self.backup_tab.grid.remove_paths(gone)
+        self.probably_delete_tab.grid.remove_paths(gone)
         msg = f"Deleted {len(gone)} item(s) from the phone."
         if quarantine_dir:
             msg += f" Copies saved to {quarantine_dir} (delete that folder to reclaim disk space)."
