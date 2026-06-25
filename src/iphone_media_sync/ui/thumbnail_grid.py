@@ -32,9 +32,13 @@ class MediaGrid(QListWidget):
     """
 
     selection_changed = Signal()
+    item_activated = Signal(object)  # MediaItem (double-clicked)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.itemDoubleClicked.connect(
+            lambda it: self.item_activated.emit(it.data(_ROLE_ITEM))
+        )
         self.setViewMode(QListWidget.ViewMode.IconMode)
         self.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.setMovement(QListWidget.Movement.Static)

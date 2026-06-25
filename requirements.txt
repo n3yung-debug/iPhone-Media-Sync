@@ -14,3 +14,8 @@ PySide6>=6.6.0
 Pillow>=10.0.0
 pillow-heif>=0.15.0
 ImageHash>=4.3.1
+
+# Optional offline OCR (text detection for "Probably Delete"). The Tesseract
+# engine itself is bundled into the Windows build separately; this is just the
+# Python wrapper. Free / Apache-2.0.
+pytesseract>=0.3.10

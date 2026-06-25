@@ -38,6 +38,7 @@ class CachedAnalysis:
     has_camera_exif: bool = False
     unique_colors: Optional[int] = None
     white_fraction: Optional[float] = None
+    text_words: Optional[int] = None
     thumb_png: Optional[bytes] = None
 
 
@@ -73,6 +74,7 @@ class ScanCache:
             ("has_camera_exif", "INTEGER"),
             ("unique_colors", "INTEGER"),
             ("white_fraction", "REAL"),
+            ("text_words", "INTEGER"),
         ):
             if col not in existing:
                 self._conn.execute(f"ALTER TABLE scan_cache ADD COLUMN {col} {decl}")
@@ -82,7 +84,7 @@ class ScanCache:
             cur = self._conn.execute(
                 "SELECT sha256, phash, capture_date, width, height, sharpness, "
                 "is_screenshot, thumb_png, has_camera_exif, unique_colors, "
-                "white_fraction FROM scan_cache WHERE key = ?",
+                "white_fraction, text_words FROM scan_cache WHERE key = ?",
                 (key,),
             )
             row = cur.fetchone()
@@ -106,6 +108,7 @@ class ScanCache:
             has_camera_exif=bool(row[8]),
             unique_colors=row[9],
             white_fraction=row[10],
+            text_words=row[11],
         )
 
     def put(self, key: str, rec: CachedAnalysis) -> None:
@@ -115,8 +118,8 @@ class ScanCache:
                 INSERT INTO scan_cache
                     (key, sha256, phash, capture_date, width, height,
                      sharpness, is_screenshot, thumb_png, has_camera_exif,
-                     unique_colors, white_fraction)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     unique_colors, white_fraction, text_words)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(key) DO UPDATE SET
                     sha256=excluded.sha256, phash=excluded.phash,
                     capture_date=excluded.capture_date, width=excluded.width,
@@ -124,7 +127,8 @@ class ScanCache:
                     is_screenshot=excluded.is_screenshot, thumb_png=excluded.thumb_png,
                     has_camera_exif=excluded.has_camera_exif,
                     unique_colors=excluded.unique_colors,
-                    white_fraction=excluded.white_fraction
+                    white_fraction=excluded.white_fraction,
+                    text_words=excluded.text_words
                 """,
                 (
                     key,
@@ -139,7 +143,15 @@ class ScanCache:
                     1 if rec.has_camera_exif else 0,
                     rec.unique_colors,
                     rec.white_fraction,
+                    rec.text_words,
                 ),
+            )
+            self._conn.commit()
+
+    def set_text_words(self, key: str, words: Optional[int]) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE scan_cache SET text_words = ? WHERE key = ?", (words, key)
             )
             self._conn.commit()
 

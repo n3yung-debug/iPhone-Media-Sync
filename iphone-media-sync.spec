@@ -44,6 +44,12 @@ hiddenimports += [
     "pythoncom",
 ]
 
+# Bundle the Tesseract OCR engine if the build placed it under vendor/tesseract
+# (see the release/build workflows). Lets offline text detection work without a
+# separate install. Optional: if absent, OCR just reports unavailable.
+if os.path.isdir("vendor/tesseract"):
+    datas += Tree("vendor/tesseract", prefix="tesseract")
+
 a = Analysis(
     ["launcher.py"],
     pathex=["src"],

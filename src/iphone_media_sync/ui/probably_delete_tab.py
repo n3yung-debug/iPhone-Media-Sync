@@ -29,6 +29,7 @@ _ROLE = Qt.ItemDataRole.UserRole
 
 class ProbablyDeleteTab(QWidget):
     delete_clicked = Signal()
+    ocr_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -50,10 +51,17 @@ class ProbablyDeleteTab(QWidget):
         select_none = QPushButton("Uncheck all")
         select_all.clicked.connect(lambda: self.grid.set_all_checked(True))
         select_none.clicked.connect(lambda: self.grid.set_all_checked(False))
+        self.ocr_btn = QPushButton("Refine with text detection")
+        self.ocr_btn.setToolTip(
+            "Run offline OCR on the shown candidates to confirm which actually "
+            "contain text (messages/memes) and drop likely false positives."
+        )
+        self.ocr_btn.clicked.connect(self.ocr_requested)
 
         top = QHBoxLayout()
         top.addWidget(self._summary, 1)
         top.addWidget(self.sensitivity)
+        top.addWidget(self.ocr_btn)
         top.addWidget(select_all)
         top.addWidget(select_none)
 

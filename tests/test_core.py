@@ -220,6 +220,49 @@ def test_ephemeral_score():
     assert ephemeral_score(vid) == (0.0, [])
 
 
+def test_ocr_text_signal_boosts_score():
+    from iphone_media_sync.core.classify import ephemeral_score
+
+    item = _photo("IMG.HEIC", 2_000_000)
+    item.has_camera_exif = True       # looks like a real photo on its own
+    item.unique_colors = 9000
+    item.white_fraction = 0.05
+    base = ephemeral_score(item)[0]
+    item.text_words = 40              # but it's full of text -> message/meme
+    boosted, reasons = ephemeral_score(item)
+    assert boosted > base
+    assert any("text detected" in r for r in reasons)
+
+
+def test_ocr_unavailable_is_graceful():
+    from iphone_media_sync.core import ocr
+
+    # pytesseract isn't installed in the test env -> must not raise.
+    assert ocr.word_count(b"not an image") is None
+    assert ocr.is_available() in (True, False)
+
+
+def test_quarantine_list_restore_empty(tmp_path):
+    from iphone_media_sync.core import quarantine
+
+    base = str(tmp_path / "q")
+    batch = quarantine.batch_dir(base)
+    batch.mkdir(parents=True)
+    (batch / "a.jpg").write_bytes(b"123")
+    (batch / "b.jpg").write_bytes(b"4567")
+
+    files = quarantine.list_quarantined(base)
+    assert len(files) == 2
+    assert quarantine.total_bytes(files) == 7
+
+    dest = tmp_path / "restored"
+    out = quarantine.restore_file(files[0], dest)
+    assert out.exists() and out.parent == dest
+
+    assert quarantine.empty_quarantine(base) == 2
+    assert quarantine.list_quarantined(base) == []
+
+
 def test_quarantine_paths(tmp_path):
     from datetime import datetime
 
