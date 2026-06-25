@@ -64,13 +64,16 @@ class AnalyzeWorker(QObject):
     error = Signal(str)
 
     def __init__(self, udid: str, items: list[MediaItem], index: BackupIndex,
-                 cache: ScanCache, want_perceptual: bool = True):
+                 cache: ScanCache, want_perceptual: bool = True,
+                 want_video_thumbs: bool = True, video_max_mb: int = 300):
         super().__init__()
         self._udid = udid
         self._items = items
         self._index = index
         self._cache = cache
         self._want_perceptual = want_perceptual
+        self._want_video_thumbs = want_video_thumbs
+        self._video_max_bytes = video_max_mb * 1024 * 1024
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -127,6 +130,16 @@ class AnalyzeWorker(QObject):
             rec.thumb_png = png
             if qimg is not None:
                 self.thumb_ready.emit(item.afc_path, qimg)
+        elif (item.kind == MediaKind.VIDEO and self._want_video_thumbs
+              and len(data) <= self._video_max_bytes):
+            from ..core.video import poster_png
+
+            png = poster_png(data)
+            if png:
+                rec.thumb_png = png
+                qimg = _qimage_from_png(png)
+                if qimg is not None:
+                    self.thumb_ready.emit(item.afc_path, qimg)
 
         self._cache.put(key, rec)
         self._apply(item, rec)

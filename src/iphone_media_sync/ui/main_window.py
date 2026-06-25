@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from PySide6.QtCore import QThread
-from PySide6.QtGui import QIcon, QImage
+from PySide6.QtCore import QThread, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QImage
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -97,6 +97,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.tabs)
 
         self._build_toolbar()
+        self._build_menu()
         self.setStatusBar(QStatusBar())
         self._set_device_status("No device. Plug in an iPhone and unlock it.")
 
@@ -138,6 +139,45 @@ class MainWindow(QMainWindow):
         settings_btn = QPushButton("Settings…")
         settings_btn.clicked.connect(self._open_settings)
         bar.addWidget(settings_btn)
+
+    def _build_menu(self) -> None:
+        tools = self.menuBar().addMenu("&Tools")
+        for label, slot in (
+            ("Open backup folder", self._open_backup_folder),
+            ("Open log folder", self._open_log_folder),
+            ("View last manifest", self._view_last_manifest),
+        ):
+            action = QAction(label, self)
+            action.triggered.connect(slot)
+            tools.addAction(action)
+
+    def _open_path(self, path) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def _open_backup_folder(self) -> None:
+        if not self.config.backup_targets:
+            QMessageBox.information(self, "No destination",
+                                    "Pick a backup folder in Settings first.")
+            return
+        self._open_path(self.config.backup_targets[0])
+
+    def _open_log_folder(self) -> None:
+        from ..core.config import APP_DIR
+
+        log_dir = APP_DIR / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        self._open_path(log_dir)
+
+    def _view_last_manifest(self) -> None:
+        from ..core.manifest import latest_manifest
+
+        for target in self.config.backup_targets:
+            path = latest_manifest(target)
+            if path is not None:
+                self._open_path(path)
+                return
+        QMessageBox.information(self, "No manifest",
+                                "No backup manifest found yet — run a backup first.")
 
     def _wire_signals(self) -> None:
         self.backup_tab.backup_clicked.connect(self._start_backup)
@@ -217,6 +257,8 @@ class MainWindow(QMainWindow):
         worker = AnalyzeWorker(
             self.udid, self.items, self.index, self.cache,
             want_perceptual=self.config.detect_perceptual,
+            want_video_thumbs=self.config.video_thumbnails,
+            video_max_mb=self.config.video_thumbnail_max_mb,
         )
         worker.thumb_ready.connect(self._on_thumb_ready)
         worker.item_analyzed.connect(self._on_item_analyzed)

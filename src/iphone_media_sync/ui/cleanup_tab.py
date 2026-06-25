@@ -58,12 +58,19 @@ class CleanupTab(QWidget):
         self.btn_shots.clicked.connect(lambda: self._select_candidates("screenshot"))
         self.btn_blurry.clicked.connect(lambda: self._select_candidates("blurry"))
         self.btn_large.clicked.connect(lambda: self._select_candidates("large_video"))
+        check_sel = QPushButton("Check selected")
+        check_sel.setToolTip("Check the highlighted tiles (ctrl/shift-click to multi-select).")
+        invert = QPushButton("Invert")
         select_none = QPushButton("Uncheck all")
+        check_sel.clicked.connect(lambda: self.grid.check_selected(True))
+        invert.clicked.connect(self.grid.invert_checks)
         select_none.clicked.connect(lambda: self.grid.set_all_checked(False))
         cand.addWidget(self.btn_shots)
         cand.addWidget(self.btn_blurry)
         cand.addWidget(self.btn_large)
         cand.addStretch(1)
+        cand.addWidget(check_sel)
+        cand.addWidget(invert)
         cand.addWidget(select_none)
 
         self.progress = QProgressBar()
@@ -161,6 +168,7 @@ class CleanupTab(QWidget):
             it.setHidden(hide)
             if hide:
                 it.setCheckState(Qt.CheckState.Unchecked)
+        self.grid.sort_by(self.filter.sort_key(), self.filter.sort_reverse())
 
     def _update_summary(self) -> None:
         checked = self.grid.checked_items()

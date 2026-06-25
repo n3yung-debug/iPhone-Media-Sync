@@ -26,8 +26,12 @@ if icon_file:
 # fully rather than relying on static import analysis. (PySide6 is handled by
 # PyInstaller's own bundled hook, so we deliberately don't collect it here —
 # that would pull in every Qt module and bloat the build.)
-for pkg in ("pymobiledevice3", "pillow_heif", "imagehash"):
-    pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
+for pkg in ("pymobiledevice3", "pillow_heif", "imagehash", "imageio_ffmpeg"):
+    try:
+        pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
+    except Exception as _exc:  # noqa: BLE001 - optional package not installed
+        print(f"NOTE: skipping collect_all({pkg}): {_exc}")
+        continue
     datas += pkg_datas
     binaries += pkg_binaries
     hiddenimports += pkg_hidden
@@ -44,18 +48,6 @@ hiddenimports += [
     "pythoncom",
 ]
 
-# Bundle the Tesseract OCR engine if the build placed it under vendor/tesseract
-# (see the release/build workflows). Lets offline text detection work without a
-# separate install. Wrapped defensively so a bundling hiccup can never break
-# the whole build — worst case OCR just reports "unavailable".
-try:
-    from PyInstaller.building.datastruct import Tree
-
-    if os.path.isdir("vendor/tesseract"):
-        datas += Tree("vendor/tesseract", prefix="tesseract")
-except Exception as _ocr_exc:  # noqa: BLE001
-    print(f"NOTE: skipping Tesseract bundle: {_ocr_exc}")
-
 a = Analysis(
     ["launcher.py"],
     pathex=["src"],
@@ -67,6 +59,16 @@ a = Analysis(
     excludes=["tkinter", "PySide6.QtQuick", "PySide6.Qt3DCore"],
     noarchive=False,
 )
+
+# Bundle the Tesseract OCR engine if the build placed it under vendor/tesseract
+# (see the release/build workflows). Tree returns TOC 3-tuples, so it must be
+# added to a.datas AFTER Analysis (NOT to the 2-tuple `datas=` list above).
+# Wrapped defensively so a bundling hiccup can never break the whole build.
+try:
+    if os.path.isdir("vendor/tesseract"):
+        a.datas += Tree("vendor/tesseract", prefix="tesseract")
+except Exception as _ocr_exc:  # noqa: BLE001
+    print(f"NOTE: skipping Tesseract bundle: {_ocr_exc}")
 
 pyz = PYZ(a.pure)
 

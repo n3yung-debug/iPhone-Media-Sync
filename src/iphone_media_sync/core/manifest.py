@@ -24,6 +24,15 @@ class ManifestRecord:
     dest_path: str
 
 
+def latest_manifest(target: str) -> Optional[Path]:
+    """Most recent manifest CSV under ``target/_manifests/``, or None."""
+    out_dir = Path(target) / MANIFEST_DIR
+    if not out_dir.is_dir():
+        return None
+    manifests = sorted(out_dir.glob("backup-*.csv"))
+    return manifests[-1] if manifests else None
+
+
 def write_manifest(target: str, records: list[ManifestRecord]) -> Optional[Path]:
     """Write a timestamped CSV manifest under ``target/_manifests/``.
 

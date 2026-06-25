@@ -30,12 +30,19 @@ class BackupTab(QWidget):
         self._summary = QLabel("Connect an iPhone to begin.")
         select_all = QPushButton("Select all")
         select_none = QPushButton("Select none")
+        check_sel = QPushButton("Check selected")
+        check_sel.setToolTip("Check the highlighted tiles (ctrl/shift-click to multi-select).")
+        invert = QPushButton("Invert")
         select_all.clicked.connect(lambda: self.grid.set_all_checked(True))
         select_none.clicked.connect(lambda: self.grid.set_all_checked(False))
+        check_sel.clicked.connect(lambda: self.grid.check_selected(True))
+        invert.clicked.connect(self.grid.invert_checks)
 
         top = QHBoxLayout()
         top.addWidget(self._summary)
         top.addStretch(1)
+        top.addWidget(check_sel)
+        top.addWidget(invert)
         top.addWidget(select_all)
         top.addWidget(select_none)
 
@@ -89,6 +96,7 @@ class BackupTab(QWidget):
 
     def _refilter(self) -> None:
         self.grid.apply_filter(self.filter.matches)
+        self.grid.sort_by(self.filter.sort_key(), self.filter.sort_reverse())
 
     def _update_summary(self) -> None:
         total = self.grid.count()

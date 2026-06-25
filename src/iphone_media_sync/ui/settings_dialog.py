@@ -98,6 +98,16 @@ class SettingsDialog(QDialog):
         self._check_updates = QCheckBox("Check for updates on startup")
         self._check_updates.setChecked(config.check_updates)
 
+        self._normalize = QCheckBox(
+            "Rename backed-up files to their capture date (YYYYMMDD_HHMMSS)"
+        )
+        self._normalize.setChecked(config.normalize_filenames)
+
+        self._video_thumbs = QCheckBox(
+            "Generate video thumbnails during analysis (slower first scan)"
+        )
+        self._video_thumbs.setChecked(config.video_thumbnails)
+
         form = QFormLayout()
         form.addRow("Folder layout:", self._folder_template)
         form.addRow("Blurry threshold:", self._blurry)
@@ -124,6 +134,8 @@ class SettingsDialog(QDialog):
         layout.addLayout(quarantine_row)
         layout.addSpacing(8)
         layout.addLayout(form)
+        layout.addWidget(self._normalize)
+        layout.addWidget(self._video_thumbs)
         layout.addWidget(self._check_updates)
         layout.addWidget(buttons)
 
@@ -156,4 +168,6 @@ class SettingsDialog(QDialog):
         self._config.large_video_mb = self._large_video.value()
         self._config.theme = self._theme.currentText()
         self._config.check_updates = self._check_updates.isChecked()
+        self._config.normalize_filenames = self._normalize.isChecked()
+        self._config.video_thumbnails = self._video_thumbs.isChecked()
         return self._config

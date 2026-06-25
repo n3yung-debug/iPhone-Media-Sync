@@ -186,6 +186,33 @@ def test_scan_cache_round_trip(tmp_path):
         cache.close()
 
 
+def test_dest_filename_normalization():
+    from datetime import datetime
+
+    from iphone_media_sync.core.backup import dest_filename, dest_path_for
+
+    item = MediaItem("DCIM/IMG_0001.HEIC", 1,
+                     modified=datetime(2026, 6, 23, 14, 30, 22))
+    assert dest_filename(item, normalize=False) == "IMG_0001.HEIC"
+    assert dest_filename(item, normalize=True) == "20260623_143022.heic"
+    p = dest_path_for(item, "/b", "{year}", normalize=True)
+    assert str(p).replace("\\", "/") == "/b/2026/20260623_143022.heic"
+
+    # No date -> falls back to original name even when normalize is on.
+    nodate = MediaItem("DCIM/IMG_9.JPG", 1)
+    assert dest_filename(nodate, normalize=True) == "IMG_9.JPG"
+
+
+def test_latest_manifest(tmp_path):
+    from iphone_media_sync.core.manifest import ManifestRecord, latest_manifest, write_manifest
+
+    target = str(tmp_path)
+    assert latest_manifest(target) is None
+    write_manifest(target, [ManifestRecord("a", "DCIM/a", "h", 1, None, "/d/a")])
+    found = latest_manifest(target)
+    assert found is not None and found.name.startswith("backup-")
+
+
 def test_ephemeral_score():
     from iphone_media_sync.core.classify import ephemeral_score, is_probably_deletable
 

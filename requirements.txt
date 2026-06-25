@@ -19,3 +19,6 @@ ImageHash>=4.3.1
 # engine itself is bundled into the Windows build separately; this is just the
 # Python wrapper. Free / Apache-2.0.
 pytesseract>=0.3.10
+
+# Video poster-frame thumbnails: ships a small ffmpeg binary (free / BSD-ish).
+imageio-ffmpeg>=0.4.9
