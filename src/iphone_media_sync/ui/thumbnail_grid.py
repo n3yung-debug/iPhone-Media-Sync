@@ -32,12 +32,18 @@ class MediaGrid(QListWidget):
     """
 
     selection_changed = Signal()
+    item_activated = Signal(object)  # MediaItem (double-clicked)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.itemDoubleClicked.connect(
+            lambda it: self.item_activated.emit(it.data(_ROLE_ITEM))
+        )
         self.setViewMode(QListWidget.ViewMode.IconMode)
         self.setResizeMode(QListWidget.ResizeMode.Adjust)
         self.setMovement(QListWidget.Movement.Static)
+        # Allow ctrl/shift-click range selection (independent of check state).
+        self.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self.setIconSize(QSize(_TILE - 24, _TILE - 24))
         self.setGridSize(QSize(_TILE, _TILE + 24))
         self.setSpacing(6)
@@ -115,6 +121,36 @@ class MediaGrid(QListWidget):
         for i in range(self.count()):
             it = self.item(i)
             it.setHidden(not predicate(it.data(_ROLE_ITEM)))
+
+    def sort_by(self, key_func, reverse: bool = False) -> None:
+        """Reorder tiles in place, preserving icons and check state."""
+        items = []
+        while self.count():
+            items.append(self.takeItem(0))
+        items.sort(key=lambda it: key_func(it.data(_ROLE_ITEM)), reverse=reverse)
+        self.blockSignals(True)
+        for it in items:
+            self.addItem(it)
+        self.blockSignals(False)
+
+    def check_selected(self, checked: bool = True) -> None:
+        """Check (or uncheck) the currently highlighted/selected tiles."""
+        state = Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        self.blockSignals(True)
+        for it in self.selectedItems():
+            it.setCheckState(state)
+        self.blockSignals(False)
+        self.selection_changed.emit()
+
+    def invert_checks(self) -> None:
+        self.blockSignals(True)
+        for i in range(self.count()):
+            it = self.item(i)
+            new = (Qt.CheckState.Unchecked if it.checkState() == Qt.CheckState.Checked
+                   else Qt.CheckState.Checked)
+            it.setCheckState(new)
+        self.blockSignals(False)
+        self.selection_changed.emit()
 
     def visible_checked_items(self) -> list[MediaItem]:
         out = []

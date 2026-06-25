@@ -13,6 +13,7 @@ from ..device.models import MediaItem, MediaKind
 # Tuning constants.
 _FLAT_COLORS = 3000        # unique colors (on a 100px thumb) below this = "flat"
 _WHITE_FRACTION = 0.30     # share of near-white pixels above this = "texty"
+_TEXT_WORDS = 12           # OCR words at/above this = "lots of text"
 
 
 def ephemeral_score(item: MediaItem) -> tuple[float, list[str]]:
@@ -40,6 +41,12 @@ def ephemeral_score(item: MediaItem) -> tuple[float, list[str]]:
     if item.white_fraction is not None and item.white_fraction >= _WHITE_FRACTION:
         score += 0.2
         reasons.append("lots of white (text/message)")
+
+    # Optional OCR signal: lots of detected text strongly implies a message
+    # screenshot or meme.
+    if item.text_words is not None and item.text_words >= _TEXT_WORDS:
+        score += 0.4
+        reasons.append(f"text detected ({item.text_words} words)")
 
     return min(score, 1.0), reasons
 

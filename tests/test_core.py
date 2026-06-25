@@ -186,6 +186,33 @@ def test_scan_cache_round_trip(tmp_path):
         cache.close()
 
 
+def test_dest_filename_normalization():
+    from datetime import datetime
+
+    from iphone_media_sync.core.backup import dest_filename, dest_path_for
+
+    item = MediaItem("DCIM/IMG_0001.HEIC", 1,
+                     modified=datetime(2026, 6, 23, 14, 30, 22))
+    assert dest_filename(item, normalize=False) == "IMG_0001.HEIC"
+    assert dest_filename(item, normalize=True) == "20260623_143022.heic"
+    p = dest_path_for(item, "/b", "{year}", normalize=True)
+    assert str(p).replace("\\", "/") == "/b/2026/20260623_143022.heic"
+
+    # No date -> falls back to original name even when normalize is on.
+    nodate = MediaItem("DCIM/IMG_9.JPG", 1)
+    assert dest_filename(nodate, normalize=True) == "IMG_9.JPG"
+
+
+def test_latest_manifest(tmp_path):
+    from iphone_media_sync.core.manifest import ManifestRecord, latest_manifest, write_manifest
+
+    target = str(tmp_path)
+    assert latest_manifest(target) is None
+    write_manifest(target, [ManifestRecord("a", "DCIM/a", "h", 1, None, "/d/a")])
+    found = latest_manifest(target)
+    assert found is not None and found.name.startswith("backup-")
+
+
 def test_ephemeral_score():
     from iphone_media_sync.core.classify import ephemeral_score, is_probably_deletable
 
@@ -218,6 +245,49 @@ def test_ephemeral_score():
     # Videos are never scored as ephemeral photos.
     vid = MediaItem("DCIM/v.MOV", 99, kind=MediaKind.VIDEO)
     assert ephemeral_score(vid) == (0.0, [])
+
+
+def test_ocr_text_signal_boosts_score():
+    from iphone_media_sync.core.classify import ephemeral_score
+
+    item = _photo("IMG.HEIC", 2_000_000)
+    item.has_camera_exif = True       # looks like a real photo on its own
+    item.unique_colors = 9000
+    item.white_fraction = 0.05
+    base = ephemeral_score(item)[0]
+    item.text_words = 40              # but it's full of text -> message/meme
+    boosted, reasons = ephemeral_score(item)
+    assert boosted > base
+    assert any("text detected" in r for r in reasons)
+
+
+def test_ocr_unavailable_is_graceful():
+    from iphone_media_sync.core import ocr
+
+    # pytesseract isn't installed in the test env -> must not raise.
+    assert ocr.word_count(b"not an image") is None
+    assert ocr.is_available() in (True, False)
+
+
+def test_quarantine_list_restore_empty(tmp_path):
+    from iphone_media_sync.core import quarantine
+
+    base = str(tmp_path / "q")
+    batch = quarantine.batch_dir(base)
+    batch.mkdir(parents=True)
+    (batch / "a.jpg").write_bytes(b"123")
+    (batch / "b.jpg").write_bytes(b"4567")
+
+    files = quarantine.list_quarantined(base)
+    assert len(files) == 2
+    assert quarantine.total_bytes(files) == 7
+
+    dest = tmp_path / "restored"
+    out = quarantine.restore_file(files[0], dest)
+    assert out.exists() and out.parent == dest
+
+    assert quarantine.empty_quarantine(base) == 2
+    assert quarantine.list_quarantined(base) == []
 
 
 def test_quarantine_paths(tmp_path):

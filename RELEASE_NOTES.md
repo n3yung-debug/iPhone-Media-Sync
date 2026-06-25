@@ -1,29 +1,37 @@
-# iPhone Media Sync v1.3.0
+# iPhone Media Sync v1.5.0
 
-## New in 1.3.0 — "Probably Delete" tab
-- A new tab that surfaces **likely-ephemeral images** — message/text
-  screenshots, memes, and images saved from the web or chats — that are usually
-  used in the moment and not worth long-term storage.
-- Candidates are scored from fast on-device signals (screenshot detection,
-  missing camera EXIF, flat/low-color graphics, and high white area typical of
-  text/messages), listed checked-by-default, each with the reason it was
-  flagged.
-- A **sensitivity** slider lets you widen or narrow what gets flagged.
-- Deletion uses the same safety net as everywhere else: confirmation, optional
-  quarantine-first, and (by default) only items already backed up. Nothing is
-  ever deleted automatically.
+A batch of workflow/usability features (all local, no paid services), plus the
+build fix that the empty v1.4.0/failed v1.4.1 needed.
 
-## Recent history
-- **1.2.4** — installer bootstraps Apple Mobile Device Support.
-- **1.2.3** — bundle `pywin32`; **1.2.2** — pin `pymobiledevice3<8` (async fix);
-  **1.2.1** — Diagnostics + log file.
-- **1.2.0** — Windows installer, quarantine-on-delete, CI.
-- **1.1.0** — Live Photos, EXIF dates, filters, best-of-burst, dry-run,
-  resume/retry, scan cache, cleanup candidates, manifest, storage readouts,
-  folder template, update checker, light theme.
+## New in 1.5.0
+- **Video poster frames** — videos now show a real thumbnail (extracted with a
+  bundled ffmpeg) instead of a placeholder. Cheap: the clip is already
+  downloaded for hashing; cached after the first scan; skips very large clips.
+- **Filename normalization on backup** — optional: rename copies to their
+  capture date (`YYYYMMDD_HHMMSS`). Toggle in Settings.
+- **Open backup folder / Open log folder / View last manifest** — under a new
+  **Tools** menu.
+- **Sort controls** — sort any grid by newest/oldest, largest/smallest, or
+  name (in the filter bar).
+- **Range/multi-select + invert** — ctrl/shift-click to highlight a range, then
+  "Check selected"; plus an "Invert" button.
+- **Date-range filter** — show only items before/after a date (great for
+  archiving old media).
+
+## Carried over (first working build of these)
+- Full-size preview (double-click a thumbnail), quarantine browser/restore,
+  offline OCR text detection in Probably Delete, and the Overview dashboard
+  (these shipped in the code for 1.4.0 but that release built empty due to a
+  packaging bug, now fixed).
+
+## Build fix
+- The Tesseract bundling appended `Tree` 3-tuples to PyInstaller's `datas`
+  (which expects 2-tuples), crashing packaging. Moved to `a.datas` after
+  Analysis; `collect_all` calls are now fault-tolerant; the build step fails
+  loudly instead of publishing an empty release.
 
 ## Download
-- **Installer (recommended):** `iPhoneMediaSync-Setup-1.3.0.exe`
+- **Installer (recommended):** `iPhoneMediaSync-Setup-1.5.0.exe`
 - **Portable:** `iPhoneMediaSync-windows.zip`
 
 On first connection, unlock the iPhone and tap "Trust This Computer."

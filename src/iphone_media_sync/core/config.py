@@ -46,6 +46,15 @@ class Config:
     blurry_threshold: float = 50.0   # sharpness below this = "blurry" candidate
     large_video_mb: int = 200        # videos at/above this size = "large" candidate
 
+    # Rename backed-up files to a capture-date stamp (YYYYMMDD_HHMMSS).
+    normalize_filenames: bool = False
+
+    # Generate poster-frame thumbnails for videos during analysis (the video is
+    # already downloaded for hashing, so this is cheap). Skip clips larger than
+    # the cap to bound the frame-extraction cost.
+    video_thumbnails: bool = True
+    video_thumbnail_max_mb: int = 300
+
     def save(self) -> None:
         APP_DIR.mkdir(parents=True, exist_ok=True)
         CONFIG_PATH.write_text(json.dumps(asdict(self), indent=2), encoding="utf-8")

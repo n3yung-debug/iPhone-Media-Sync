@@ -55,6 +55,7 @@ class MediaItem:
     has_camera_exif: bool = False
     unique_colors: Optional[int] = None
     white_fraction: Optional[float] = None
+    text_words: Optional[int] = None  # from optional OCR; None = not run
 
     # Live Photo linkage. A Live Photo is a still (HEIC/JPG) plus a .MOV with
     # the same basename. ``live_partner`` is the other half's afc_path.

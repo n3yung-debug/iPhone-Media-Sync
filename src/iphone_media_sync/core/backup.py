@@ -37,7 +37,16 @@ class BackupResult:
     manifest_paths: list[str] = field(default_factory=list)
 
 
-def dest_path_for(item: MediaItem, target: str, template: str) -> Path:
+def dest_filename(item: MediaItem, normalize: bool) -> str:
+    """The on-disk filename for an item: original, or a capture-date stamp."""
+    if normalize and item.best_date:
+        return item.best_date.strftime("%Y%m%d_%H%M%S") + item.extension
+    return item.filename
+
+
+def dest_path_for(
+    item: MediaItem, target: str, template: str, normalize: bool = False
+) -> Path:
     """Compute the on-disk destination for an item under a backup target."""
     when = item.best_date or datetime.now()
     subdir = template.format(
@@ -45,7 +54,7 @@ def dest_path_for(item: MediaItem, target: str, template: str) -> Path:
         month=when.strftime("%m"),
         date=when.strftime("%Y-%m-%d"),
     )
-    return Path(target) / subdir / item.filename
+    return Path(target) / subdir / dest_filename(item, normalize)
 
 
 def _unique_path(path: Path) -> Path:
@@ -139,7 +148,10 @@ class BackupEngine:
 
         primary_dest: Optional[str] = None
         for target in targets:
-            dest = _unique_path(dest_path_for(item, target, self._config.folder_template))
+            dest = _unique_path(dest_path_for(
+                item, target, self._config.folder_template,
+                self._config.normalize_filenames,
+            ))
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(data)
 

@@ -64,13 +64,16 @@ class AnalyzeWorker(QObject):
     error = Signal(str)
 
     def __init__(self, udid: str, items: list[MediaItem], index: BackupIndex,
-                 cache: ScanCache, want_perceptual: bool = True):
+                 cache: ScanCache, want_perceptual: bool = True,
+                 want_video_thumbs: bool = True, video_max_mb: int = 300):
         super().__init__()
         self._udid = udid
         self._items = items
         self._index = index
         self._cache = cache
         self._want_perceptual = want_perceptual
+        self._want_video_thumbs = want_video_thumbs
+        self._video_max_bytes = video_max_mb * 1024 * 1024
         self._cancelled = False
 
     def cancel(self) -> None:
@@ -127,6 +130,16 @@ class AnalyzeWorker(QObject):
             rec.thumb_png = png
             if qimg is not None:
                 self.thumb_ready.emit(item.afc_path, qimg)
+        elif (item.kind == MediaKind.VIDEO and self._want_video_thumbs
+              and len(data) <= self._video_max_bytes):
+            from ..core.video import poster_png
+
+            png = poster_png(data)
+            if png:
+                rec.thumb_png = png
+                qimg = _qimage_from_png(png)
+                if qimg is not None:
+                    self.thumb_ready.emit(item.afc_path, qimg)
 
         self._cache.put(key, rec)
         self._apply(item, rec)
@@ -142,6 +155,7 @@ class AnalyzeWorker(QObject):
         item.has_camera_exif = rec.has_camera_exif
         item.unique_colors = rec.unique_colors
         item.white_fraction = rec.white_fraction
+        item.text_words = rec.text_words
         if rec.sha256:
             item.backed_up = self._index.is_backed_up(rec.sha256)
 
@@ -254,6 +268,106 @@ class UpdateCheckWorker(QObject):
                 self.update_available.emit(info.latest, info.url)
         finally:
             self.finished.emit()
+
+
+class OcrWorker(QObject):
+    """Runs OCR over the given items (reading each from the device once).
+
+    Results are written back to the items and the scan cache. Bounded to the
+    candidate set the caller passes in, so it stays fast and opt-in.
+    """
+
+    progress = Signal(int, int)
+    item_done = Signal(object)  # MediaItem with text_words filled
+    finished = Signal()
+    error = Signal(str)
+
+    def __init__(self, udid: str, items: list[MediaItem], cache: ScanCache):
+        super().__init__()
+        self._udid = udid
+        self._items = items
+        self._cache = cache
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    def run(self) -> None:
+        from ..core.ocr import word_count
+
+        total = len(self._items)
+        try:
+            with AfcMedia(self._udid) as media:
+                for i, item in enumerate(self._items, start=1):
+                    if self._cancelled:
+                        break
+                    try:
+                        data = media.read_bytes(item.afc_path)
+                        words = word_count(data)
+                    except DeviceError:
+                        words = None
+                    item.text_words = words
+                    self._cache.set_text_words(
+                        make_key(item.afc_path, item.size, item.modified), words
+                    )
+                    self.item_done.emit(item)
+                    self.progress.emit(i, total)
+            self.finished.emit()
+        except DeviceError as exc:
+            self.error.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            log.exception("ocr pass failed")
+            self.error.emit(f"Unexpected error during OCR: {exc}")
+
+
+class PreviewWorker(QObject):
+    """Fetches a single full image from the device and decodes it for preview."""
+
+    ready = Signal(str, QImage)  # afc_path, image
+    error = Signal(str)
+    finished = Signal()
+
+    def __init__(self, udid: str, afc_path: str, max_px: int = 1600):
+        super().__init__()
+        self._udid = udid
+        self._afc_path = afc_path
+        self._max_px = max_px
+
+    def run(self) -> None:
+        try:
+            with AfcMedia(self._udid) as media:
+                data = media.read_bytes(self._afc_path)
+            qimg = _decode_preview(data, self._max_px)
+            if qimg is None:
+                self.error.emit("Could not decode this file for preview.")
+            else:
+                self.ready.emit(self._afc_path, qimg)
+        except DeviceError as exc:
+            self.error.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            log.exception("preview failed")
+            self.error.emit(f"Preview error: {exc}")
+        finally:
+            self.finished.emit()
+
+
+def _decode_preview(data: bytes, max_px: int) -> Optional[QImage]:
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            img = img.convert("RGBA")
+            img.thumbnail((max_px, max_px))
+            qimg = QImage(
+                img.tobytes("raw", "RGBA"), img.width, img.height,
+                QImage.Format.Format_RGBA8888,
+            )
+            return qimg.copy()
+    except Exception as exc:  # noqa: BLE001
+        log.debug("preview decode failed: %s", exc)
+        return None
 
 
 def _decode_thumbnail(data: bytes) -> tuple[Optional[QImage], Optional[bytes]]:

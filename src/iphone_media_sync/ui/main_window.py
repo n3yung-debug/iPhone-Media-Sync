@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from PySide6.QtCore import QThread
-from PySide6.QtGui import QIcon, QImage
+from PySide6.QtCore import QThread, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QImage
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
@@ -34,7 +34,10 @@ from ..device.models import DeviceInfo, MediaItem
 from .backup_tab import BackupTab
 from .cleanup_tab import CleanupTab
 from .duplicates_tab import DuplicatesTab
+from .overview_tab import OverviewTab
+from .preview_dialog import PreviewDialog
 from .probably_delete_tab import ProbablyDeleteTab
+from .quarantine_dialog import QuarantineDialog
 from .resources import APP_ICON
 from .settings_dialog import SettingsDialog
 from .theme import apply_theme
@@ -42,6 +45,8 @@ from .workers import (
     AnalyzeWorker,
     BackupWorker,
     DeleteWorker,
+    OcrWorker,
+    PreviewWorker,
     ScanWorker,
     UpdateCheckWorker,
 )
@@ -81,15 +86,18 @@ class MainWindow(QMainWindow):
         self.duplicates_tab.set_thumb_cache(self.thumb_cache)
         self.probably_delete_tab = ProbablyDeleteTab()
         self.probably_delete_tab.set_thumb_cache(self.thumb_cache)
+        self.overview_tab = OverviewTab()
 
         self.tabs = QTabWidget()
         self.tabs.addTab(self.backup_tab, "Backup")
         self.tabs.addTab(self.duplicates_tab, "Duplicates")
         self.tabs.addTab(self.probably_delete_tab, "Probably Delete")
         self.tabs.addTab(self.cleanup_tab, "Free up space")
+        self.tabs.addTab(self.overview_tab, "Overview")
         self.setCentralWidget(self.tabs)
 
         self._build_toolbar()
+        self._build_menu()
         self.setStatusBar(QStatusBar())
         self._set_device_status("No device. Plug in an iPhone and unlock it.")
 
@@ -122,12 +130,54 @@ class MainWindow(QMainWindow):
         version_label = QLabel(f"v{__version__}  ")
         version_label.setStyleSheet("color: #b3a9cc;")
         bar.addWidget(version_label)
+        quarantine_btn = QPushButton("Quarantine…")
+        quarantine_btn.clicked.connect(self._open_quarantine)
+        bar.addWidget(quarantine_btn)
         diagnostics_btn = QPushButton("Diagnostics")
         diagnostics_btn.clicked.connect(self._open_diagnostics)
         bar.addWidget(diagnostics_btn)
         settings_btn = QPushButton("Settings…")
         settings_btn.clicked.connect(self._open_settings)
         bar.addWidget(settings_btn)
+
+    def _build_menu(self) -> None:
+        tools = self.menuBar().addMenu("&Tools")
+        for label, slot in (
+            ("Open backup folder", self._open_backup_folder),
+            ("Open log folder", self._open_log_folder),
+            ("View last manifest", self._view_last_manifest),
+        ):
+            action = QAction(label, self)
+            action.triggered.connect(slot)
+            tools.addAction(action)
+
+    def _open_path(self, path) -> None:
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def _open_backup_folder(self) -> None:
+        if not self.config.backup_targets:
+            QMessageBox.information(self, "No destination",
+                                    "Pick a backup folder in Settings first.")
+            return
+        self._open_path(self.config.backup_targets[0])
+
+    def _open_log_folder(self) -> None:
+        from ..core.config import APP_DIR
+
+        log_dir = APP_DIR / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        self._open_path(log_dir)
+
+    def _view_last_manifest(self) -> None:
+        from ..core.manifest import latest_manifest
+
+        for target in self.config.backup_targets:
+            path = latest_manifest(target)
+            if path is not None:
+                self._open_path(path)
+                return
+        QMessageBox.information(self, "No manifest",
+                                "No backup manifest found yet — run a backup first.")
 
     def _wire_signals(self) -> None:
         self.backup_tab.backup_clicked.connect(self._start_backup)
@@ -138,6 +188,10 @@ class MainWindow(QMainWindow):
         self.duplicates_tab.delete_clicked.connect(self._delete_items)
         self.cleanup_tab.delete_clicked.connect(self._delete_from_cleanup)
         self.probably_delete_tab.delete_clicked.connect(self._delete_from_probably)
+        self.probably_delete_tab.ocr_requested.connect(self._refine_with_ocr)
+        for grid in (self.backup_tab.grid, self.cleanup_tab.grid,
+                     self.probably_delete_tab.grid):
+            grid.item_activated.connect(self._preview_item)
 
     # -- device events ----------------------------------------------------
     def _on_device_connected(self, info: DeviceInfo) -> None:
@@ -163,6 +217,7 @@ class MainWindow(QMainWindow):
         self.backup_tab.set_ready(False)
         self.cleanup_tab.grid.clear_items()
         self.probably_delete_tab.set_items([])
+        self.overview_tab.set_items([])
 
     # -- scan + analyze ---------------------------------------------------
     def _grid_items(self) -> list[MediaItem]:
@@ -202,6 +257,8 @@ class MainWindow(QMainWindow):
         worker = AnalyzeWorker(
             self.udid, self.items, self.index, self.cache,
             want_perceptual=self.config.detect_perceptual,
+            want_video_thumbs=self.config.video_thumbnails,
+            video_max_mb=self.config.video_thumbnail_max_mb,
         )
         worker.thumb_ready.connect(self._on_thumb_ready)
         worker.item_analyzed.connect(self._on_item_analyzed)
@@ -227,6 +284,7 @@ class MainWindow(QMainWindow):
         self.cleanup_tab._apply_filter()
         self.backup_tab._refilter()
         self.probably_delete_tab.set_items(self._grid_items())
+        self.overview_tab.set_items(self._grid_items())
         self._set_device_status(
             "Ready. Review and back up, or check the Duplicates / Probably "
             "Delete tabs. " + self._storage_summary()
@@ -444,6 +502,57 @@ class MainWindow(QMainWindow):
                 f"smallest destination has {human_bytes(min(avail))} free."
             )
         return ""
+
+    def _open_quarantine(self) -> None:
+        QuarantineDialog(self.config.quarantine_dir, self).exec()
+
+    def _preview_item(self, media: MediaItem) -> None:
+        if media is None or not self.udid:
+            return
+        if media.kind.value != "photo":
+            QMessageBox.information(
+                self, "Preview", "Preview is available for photos only."
+            )
+            return
+        dlg = PreviewDialog(media, self)
+        worker = PreviewWorker(self.udid, media.afc_path)
+        worker.ready.connect(lambda _p, img: dlg.set_image(img))
+        worker.error.connect(dlg.set_error)
+        self._run("preview", worker)
+        dlg.exec()
+
+    def _refine_with_ocr(self) -> None:
+        from ..core import ocr
+
+        if not self.udid:
+            return
+        candidates = self.probably_delete_tab.grid.all_items()
+        if not candidates:
+            QMessageBox.information(self, "Nothing to refine",
+                                    "No candidates are shown.")
+            return
+        if not ocr.is_available():
+            QMessageBox.information(
+                self, "OCR unavailable",
+                "The text-detection engine isn't available in this build.",
+            )
+            return
+        self.probably_delete_tab.set_busy(True)
+        self.probably_delete_tab.set_status(
+            f"Reading text from {len(candidates)} image(s)…"
+        )
+        worker = OcrWorker(self.udid, candidates, self.cache)
+        worker.progress.connect(
+            lambda d, t: self.probably_delete_tab.set_status(f"OCR {d}/{t}…")
+        )
+        worker.finished.connect(self._on_ocr_done)
+        worker.error.connect(self._on_worker_error)
+        self._run("ocr", worker)
+
+    def _on_ocr_done(self) -> None:
+        self.probably_delete_tab.set_busy(False)
+        self.probably_delete_tab.set_items(self._grid_items())
+        self.probably_delete_tab.set_status("Refined with text detection.")
 
     def _open_diagnostics(self) -> None:
         from ..device.diagnostics import run_diagnostics
