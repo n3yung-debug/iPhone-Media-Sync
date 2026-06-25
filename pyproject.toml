@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "iphone-media-sync"
-version = "1.4.0"
+version = "1.4.1"
 description = "Detect, back up, dedupe, and clean up iPhone photos and videos on Windows."
 readme = "README.md"
 requires-python = ">=3.10"

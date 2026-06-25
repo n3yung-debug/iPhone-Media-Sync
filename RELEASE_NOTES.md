@@ -1,8 +1,10 @@
-# iPhone Media Sync v1.4.0
+# iPhone Media Sync v1.4.1
 
-Four new features — all fully local, no paid services.
+Fixes the v1.4.0 build (which published with no downloadable files because the
+OCR-bundling change crashed the packaging step). v1.4.1 carries all the v1.4.0
+features below, with working installer + zip.
 
-## New in 1.4.0
+## Features (1.4.0)
 - **Full-size preview** — double-click any thumbnail (Backup, Probably Delete,
   or Free up space) to view the full image, with its details.
 - **Quarantine browser** — a new **Quarantine…** toolbar button lists the local
@@ -25,7 +27,7 @@ Four new features — all fully local, no paid services.
   resume/retry, scan cache, cleanup candidates, manifest, storage, themes.
 
 ## Download
-- **Installer (recommended):** `iPhoneMediaSync-Setup-1.4.0.exe`
+- **Installer (recommended):** `iPhoneMediaSync-Setup-1.4.1.exe`
 - **Portable:** `iPhoneMediaSync-windows.zip`
 
 On first connection, unlock the iPhone and tap "Trust This Computer."

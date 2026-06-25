@@ -46,9 +46,15 @@ hiddenimports += [
 
 # Bundle the Tesseract OCR engine if the build placed it under vendor/tesseract
 # (see the release/build workflows). Lets offline text detection work without a
-# separate install. Optional: if absent, OCR just reports unavailable.
-if os.path.isdir("vendor/tesseract"):
-    datas += Tree("vendor/tesseract", prefix="tesseract")
+# separate install. Wrapped defensively so a bundling hiccup can never break
+# the whole build — worst case OCR just reports "unavailable".
+try:
+    from PyInstaller.building.datastruct import Tree
+
+    if os.path.isdir("vendor/tesseract"):
+        datas += Tree("vendor/tesseract", prefix="tesseract")
+except Exception as _ocr_exc:  # noqa: BLE001
+    print(f"NOTE: skipping Tesseract bundle: {_ocr_exc}")
 
 a = Analysis(
     ["launcher.py"],

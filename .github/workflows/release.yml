@@ -10,7 +10,7 @@ on:
       version:
         description: "Version to release (without the leading v)"
         required: true
-        default: "1.4.0"
+        default: "1.4.1"
 
 permissions:
   contents: write
@@ -46,11 +46,9 @@ jobs:
 
       - name: Build executable (folder build)
         id: build
-        continue-on-error: true
         run: pyinstaller --noconfirm --clean iphone-media-sync.spec
 
       - name: Zip the app folder
-        if: steps.build.outcome == 'success'
         run: Compress-Archive -Path dist/iPhoneMediaSync/* -DestinationPath iPhoneMediaSync-windows.zip
         shell: pwsh
 

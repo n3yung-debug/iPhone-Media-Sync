@@ -28,8 +28,12 @@ runs with the repo token and can create tags/releases:
    has `permissions: contents: write`, builds the Windows app, and publishes
    the release via `softprops/action-gh-release@v2` (`tag_name: vX.Y.Z`,
    `target_commitish: main`, `body_path: RELEASE_NOTES.md`, attaching the build
-   zip). The build step is `continue-on-error` so the release still publishes
-   if packaging has trouble.
+   zip + installer). Do NOT make the PyInstaller build step `continue-on-error`
+   — if it fails it must fail the run, otherwise the release publishes with no
+   files attached. Only optional, non-essential steps (installer compile,
+   Tesseract bundling) should be `continue-on-error`. After a release, verify
+   the assets are actually attached (`get_release_by_tag`), not just that the
+   run is green.
 4. Dispatch the workflow with the version input, poll until it completes, then
    confirm with the release URL.
 5. Merge the working branch into `main` so `main` and the Releases page always
