@@ -119,6 +119,9 @@ class AnalyzeWorker(QObject):
             rec.width = meta.width
             rec.height = meta.height
             rec.sharpness = meta.sharpness
+            rec.has_camera_exif = meta.has_camera_exif
+            rec.unique_colors = meta.unique_colors
+            rec.white_fraction = meta.white_fraction
             rec.is_screenshot = looks_like_screenshot(item.afc_path, meta.has_camera_exif)
             qimg, png = _decode_thumbnail(data)
             rec.thumb_png = png
@@ -136,6 +139,9 @@ class AnalyzeWorker(QObject):
         item.height = rec.height
         item.sharpness = rec.sharpness
         item.is_screenshot = rec.is_screenshot
+        item.has_camera_exif = rec.has_camera_exif
+        item.unique_colors = rec.unique_colors
+        item.white_fraction = rec.white_fraction
         if rec.sha256:
             item.backed_up = self._index.is_backed_up(rec.sha256)
 

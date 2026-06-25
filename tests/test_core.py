@@ -186,6 +186,40 @@ def test_scan_cache_round_trip(tmp_path):
         cache.close()
 
 
+def test_ephemeral_score():
+    from iphone_media_sync.core.classify import ephemeral_score, is_probably_deletable
+
+    # A real camera photo: rich colors, camera EXIF, not a screenshot.
+    photo = _photo("IMG_1.HEIC", 3_000_000)
+    photo.has_camera_exif = True
+    photo.unique_colors = 9000
+    photo.white_fraction = 0.05
+    assert ephemeral_score(photo)[0] == 0.0
+    assert not is_probably_deletable(photo)
+
+    # A message screenshot: PNG screenshot, flat colors, lots of white.
+    shot = _photo("IMG_2.PNG", 400_000)
+    shot.is_screenshot = True
+    shot.has_camera_exif = False
+    shot.unique_colors = 500
+    shot.white_fraction = 0.6
+    score, reasons = ephemeral_score(shot)
+    assert score >= 0.8
+    assert is_probably_deletable(shot)
+    assert any("white" in r for r in reasons)
+
+    # A saved meme (jpg, no camera EXIF, flat colors).
+    meme = _photo("IMG_3.JPG", 200_000)
+    meme.has_camera_exif = False
+    meme.unique_colors = 800
+    meme.white_fraction = 0.1
+    assert is_probably_deletable(meme)
+
+    # Videos are never scored as ephemeral photos.
+    vid = MediaItem("DCIM/v.MOV", 99, kind=MediaKind.VIDEO)
+    assert ephemeral_score(vid) == (0.0, [])
+
+
 def test_quarantine_paths(tmp_path):
     from datetime import datetime
 

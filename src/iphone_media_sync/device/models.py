@@ -52,6 +52,9 @@ class MediaItem:
     height: Optional[int] = None
     sharpness: Optional[float] = None  # higher = sharper; None = unknown
     is_screenshot: bool = False
+    has_camera_exif: bool = False
+    unique_colors: Optional[int] = None
+    white_fraction: Optional[float] = None
 
     # Live Photo linkage. A Live Photo is a still (HEIC/JPG) plus a .MOV with
     # the same basename. ``live_partner`` is the other half's afc_path.

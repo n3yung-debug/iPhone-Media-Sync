@@ -41,6 +41,9 @@ class ImageMeta:
     height: Optional[int] = None
     sharpness: Optional[float] = None
     has_camera_exif: bool = False
+    # Signals used to spot "ephemeral" images (screenshots / memes / saved pics).
+    unique_colors: Optional[int] = None   # color diversity on a 100px thumbnail
+    white_fraction: Optional[float] = None  # share of near-white pixels (0..1)
 
 
 def _parse_exif_datetime(value: str) -> Optional[datetime]:
@@ -52,7 +55,7 @@ def _parse_exif_datetime(value: str) -> Optional[datetime]:
 
 
 def extract_image_metadata(data: bytes, *, compute_sharpness: bool = True) -> ImageMeta:
-    """Pull capture date, size, sharpness, and camera-EXIF presence from bytes."""
+    """Pull capture date, size, sharpness, camera-EXIF, and ephemeral signals."""
     try:
         from PIL import Image
     except ImportError:
@@ -73,9 +76,33 @@ def extract_image_metadata(data: bytes, *, compute_sharpness: bool = True) -> Im
                 meta.has_camera_exif = bool(exif.get(_TAG_MAKE) or exif.get(_TAG_MODEL))
             if compute_sharpness:
                 meta.sharpness = _sharpness(img)
+            meta.unique_colors, meta.white_fraction = _color_stats(img)
     except Exception as exc:  # noqa: BLE001
         log.debug("metadata extraction failed: %s", exc)
     return meta
+
+
+def _color_stats(img) -> tuple[Optional[int], Optional[float]]:
+    """Return (unique color count, near-white fraction) on a 100px RGB thumbnail.
+
+    Photos have rich gradients (many colors, few flat-white regions); UI
+    screenshots / memes / message captures tend to have few colors and large
+    flat (often white) areas.
+    """
+    try:
+        small = img.convert("RGB")
+        small.thumbnail((100, 100))
+        pixels = list(small.getdata())
+        if not pixels:
+            return None, None
+        colors = small.getcolors(maxcolors=len(pixels))
+        unique = len(colors) if colors is not None else len(pixels)
+        near_white = sum(1 for r, g, b in pixels if r >= 235 and g >= 235 and b >= 235)
+        return unique, near_white / len(pixels)
+    except Exception as exc:  # noqa: BLE001
+        log.debug("color stats failed: %s", exc)
+        return None, None
+
 
 
 def _sharpness(img) -> Optional[float]:
