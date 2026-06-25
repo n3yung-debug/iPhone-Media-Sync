@@ -9,12 +9,18 @@ placeholder.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Optional
 
 log = logging.getLogger(__name__)
+
+# On Windows, stop a console window from flashing for each ffmpeg call.
+_NO_WINDOW: dict = {}
+if os.name == "nt":
+    _NO_WINDOW["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
 
 def _ffmpeg_exe() -> Optional[str]:
@@ -49,7 +55,9 @@ def poster_png(video_bytes: bytes, max_px: int = 360) -> Optional[bytes]:
                 str(out),
             ]
             subprocess.run(cmd, check=True, timeout=60,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                           stdin=subprocess.DEVNULL,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                           **_NO_WINDOW)
             if out.exists() and out.stat().st_size > 0:
                 return out.read_bytes()
         except (subprocess.SubprocessError, OSError) as exc:

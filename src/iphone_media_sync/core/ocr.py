@@ -31,6 +31,33 @@ def _bundled_tesseract() -> Optional[Path]:
     return exe if exe.exists() else None
 
 
+def _silence_console(pytesseract) -> None:
+    """Stop tesseract.exe from flashing a console window on Windows.
+
+    pytesseract calls ``subprocess.Popen`` internally with no window flag, so we
+    swap its module-level ``subprocess`` reference for a shim that injects
+    CREATE_NO_WINDOW. Scoped to pytesseract only.
+    """
+    if os.name != "nt":
+        return
+    try:
+        import subprocess as real_sp
+
+        flags = getattr(real_sp, "CREATE_NO_WINDOW", 0x08000000)
+
+        class _Shim:
+            def __getattr__(self, name):
+                return getattr(real_sp, name)
+
+            def Popen(self, *args, **kwargs):  # noqa: N802 (match subprocess)
+                kwargs.setdefault("creationflags", flags)
+                return real_sp.Popen(*args, **kwargs)
+
+        pytesseract.pytesseract.subprocess = _Shim()
+    except Exception as exc:  # noqa: BLE001
+        log.debug("could not silence tesseract console: %s", exc)
+
+
 def _configure() -> bool:
     """Point pytesseract at the bundled engine if present. Returns True if
     pytesseract is importable."""
@@ -44,6 +71,7 @@ def _configure() -> bool:
         if exe is not None:
             pytesseract.pytesseract.tesseract_cmd = str(exe)
             os.environ.setdefault("TESSDATA_PREFIX", str(exe.parent / "tessdata"))
+        _silence_console(pytesseract)
         _configured = True
     return True
 
